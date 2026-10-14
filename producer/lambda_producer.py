@@ -118,10 +118,8 @@ def lambda_handler(event, context):
     utc_now = datetime.now(timezone.utc)
 
     # Resolve date boundaries: fallback to trailing 24-hour UTC window if omitted
-    start_date = event.get(
-        "start_date", (utc_now - timedelta(days=1)).strftime("%Y-%m-%d")
-    )
-    end_date = event.get("end_date", utc_now.strftime("%Y-%m-%d"))
+    start_date = event.get("start_date", utc_now.strftime("%Y-%m-%d"))
+    end_date = event.get("end_date", (utc_now + timedelta(days=1)).strftime("%Y-%m-%d"))
 
     # Stage 1: Discover changed movie entities
     logger.info("Fetching changed movies for %s to %s", start_date, end_date)
