@@ -70,7 +70,11 @@ def fetch_movie_detail(movie_id: int):
 def lambda_handler(event, context):
     """Processes batch of records triggered directly by SQS."""
     # Extract incoming SQS batch records dispatched by the event source mapping
+
+    # One or possibly multiple messages are packed into a list of Records, which is then passed via the `event` variable.
+
     records = event.get("Records", [])
+    # records = [{'messageId': '...', 'body': '{"movie_ids": [1, 2, 3, ..., 50]}'}, {}, ...]
     logger.info("Processing SQS batch of %s records", len(records))
 
     enriched_records = []
@@ -79,7 +83,9 @@ def lambda_handler(event, context):
     for item in records:
         # Deserialize message body payload to extract target movie identifier
         body = json.loads(item["body"])
+        # body = {"movie_ids": [1, 2, 3, ..., 50]}
         movie_ids = body.get("movie_ids", [])
+        # movie_ids = [1, 2, 3, ..., 50]
 
         for movie_id in movie_ids:
             detail = fetch_movie_detail(movie_id)

@@ -100,6 +100,8 @@ def push_to_sqs(movie_ids: list[int], chunk_size: int = 50) -> int:
         {"movie_ids": movie_ids[i : i + chunk_size]}
         for i in range(0, len(movie_ids), chunk_size)
     ]
+    # grouped_messages = [{"movie_ids": [1, 2, 3, ..., 50]}, {"movie_ids": [51, 52, ..., 100]}, ...]
+
     total_sent = 0
     sqs_batch_limit = 10  # Enforce AWS SQS SendMessageBatch maximum limit
 
@@ -112,6 +114,7 @@ def push_to_sqs(movie_ids: list[int], chunk_size: int = 50) -> int:
             {"Id": str(idx), "MessageBody": json.dumps(msg)}
             for idx, msg in enumerate(chunk)
         ]
+        # entries = [{"Id": "0", "MessageBody": '{"movie_ids": [1, 2, 3, ..., 50]}'}, ...]
 
         # Dispatch batch directly to targeted Amazon SQS Queue
         sqs_client.send_message_batch(QueueUrl=SQS_QUEUE_URL, Entries=entries)
