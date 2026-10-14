@@ -135,5 +135,11 @@ def lambda_handler(event, context):
     # Return standard JSON response payload for observability and caller verification
     return {
         "statusCode": 200,
-        "body": json.dumps({"status": "success", "ids_pushed": len(changed_ids)}),
+        "body": json.dumps(
+            {
+                "status": "success",
+                "ids_pushed": len(changed_ids),
+                "sent_to_sqs": sent_count,
+            }
+        ),
     }
