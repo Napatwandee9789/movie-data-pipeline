@@ -36,7 +36,7 @@ jobs:
       - name: Update Producer Lambda Function Code
         run: |
           aws lambda update-function-code \
-            --function-name tmdb-producer-fn \
+            --function-name movie-pipeline-lambda-producer \
             --image-uri ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/movie-pipeline-lambda-producer:latest
 
   deploy-worker:
@@ -70,5 +70,5 @@ jobs:
       - name: Update Worker Lambda Function Code
         run: |
           aws lambda update-function-code \
-            --function-name tmdb-worker-fn \
+            --function-name movie-pipeline-lambda-worker \
             --image-uri ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/movie-pipeline-lambda-worker:latest
