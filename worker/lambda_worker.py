@@ -76,22 +76,19 @@ def lambda_handler(event, context):
     enriched_records = []
     utc_now = datetime.now(timezone.utc)
 
-    # Iterate through each queued message in the received batch
     for item in records:
         # Deserialize message body payload to extract target movie identifier
         body = json.loads(item["body"])
-        movie_id = body.get("movie_id")
-        if not movie_id:
-            continue
+        movie_ids = body.get("movie_ids", [])
 
-        detail = fetch_movie_detail(movie_id)
-        if detail:
-            # Enforce schema parity with historical backfill by filtering out adult and non-theatrical video entries
-            if not detail.get("adult", False) and not detail.get("video", False):
-                enriched_records.append(detail)
+        for movie_id in movie_ids:
+            detail = fetch_movie_detail(movie_id)
+            if detail:
+                # Enforce schema parity with historical backfill by filtering out adult and non-theatrical video entries
+                if not detail.get("adult", False) and not detail.get("video", False):
+                    enriched_records.append(detail)
 
-        # Enforce rate-limiting delay to prevent downstream API throttling
-        time.sleep(0.05)
+            time.sleep(0.05)  # Rate limiting safety pause
 
     # Persist batch payload to S3 Data Lake under date-partitioned paths
     if enriched_records:

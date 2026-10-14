@@ -91,30 +91,43 @@ def fetch_changed_movie_ids(start_date: str, end_date: str) -> list[int]:
     return list(set(movie_ids))
 
 
-def push_to_sqs(movie_ids: list[int]) -> int:
-    """Send movie IDs to SQS in batches of 10 (AWS Limit per call)."""
-    total_sent = 0
-    batch_size = 10  # Enforce AWS SQS SendMessageBatch maximum limit
+def push_to_sqs(movie_ids: list[int], chunk_size: int = 50) -> int:
+    """Chunk movie IDs into groups of 50 per SQS message,
+    SQS using send_message_batch (max 10 messages per API call)."""
 
-    # Chunk the movie ID list into batches of 10 items
-    for i in range(0, len(movie_ids), batch_size):
-        chunk = movie_ids[i : i + batch_size]
+    # Group Movie IDs into groups of 50
+    grouped_messages = [
+        {"movie_ids": movie_ids[i : i + chunk_size]}
+        for i in range(0, len(movie_ids), chunk_size)
+    ]
+    total_sent = 0
+    sqs_batch_limit = 10  # Enforce AWS SQS SendMessageBatch maximum limit
+
+    # Send to SQS in batches of 10 messages (10 messages * 50 movies = 500 movies/call)
+    for i in range(0, len(grouped_messages), sqs_batch_limit):
+        chunk = grouped_messages[i : i + sqs_batch_limit]
 
         # Construct SQS batch entries with required unique batch-level identifiers
         entries = [
-            {"Id": str(idx), "MessageBody": json.dumps({"movie_id": mid})}
-            for idx, mid in enumerate(chunk)
+            {"Id": str(idx), "MessageBody": json.dumps(msg)}
+            for idx, msg in enumerate(chunk)
         ]
 
         # Dispatch batch directly to targeted Amazon SQS Queue
         sqs_client.send_message_batch(QueueUrl=SQS_QUEUE_URL, Entries=entries)
-        total_sent += len(chunk)
+        total_sent += sum(len(msg["movie_ids"]) for msg in chunk)
 
+    logger.info(
+        "Enqueued %s total movies across %s SQS messages",
+        total_sent,
+        len(grouped_messages),
+    )
     return total_sent
 
 
 def lambda_handler(event, context):
     """Fetches updated movie IDs from TMDB Changes API and pushes them to SQS."""
+
     # Obtain current UTC timestamp for execution tracking
     utc_now = datetime.now(timezone.utc)
 
@@ -129,17 +142,11 @@ def lambda_handler(event, context):
 
     # Stage 2: Enqueue discovered IDs for asynchronous downstream consumption
     if changed_ids:
-        sent_count = push_to_sqs(changed_ids)
+        sent_count = push_to_sqs(changed_ids, chunk_size=50)
         logger.info("Pushed %s messages to SQS successfully", sent_count)
 
     # Return standard JSON response payload for observability and caller verification
     return {
         "statusCode": 200,
-        "body": json.dumps(
-            {
-                "status": "success",
-                "ids_pushed": len(changed_ids),
-                "sent_to_sqs": sent_count,
-            }
-        ),
+        "body": json.dumps({"status": "success", "ids_pushed": len(changed_ids)}),
     }
