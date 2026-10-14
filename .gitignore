@@ -8,10 +8,12 @@ wheels/
 
 # Virtual environments
 .venv
-
+uv
 # env files
 .env
 
 # Logs
 *.log
 scripts/tmdb_backfill.log
+
+test.ipynb
