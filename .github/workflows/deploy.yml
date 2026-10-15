@@ -28,7 +28,7 @@ jobs:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           REPOSITORY: movie-pipeline-lambda-producer
           IMAGE_TAG: latest
-        working-directory: ./producer  # ระบุโฟลเดอร์ของ producer
+        working-directory: ./producer_for_daily_changes  # โฟลเดอร์ของ producer
         run: |
           docker build --platform linux/amd64 --provenance=false -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
@@ -41,7 +41,7 @@ jobs:
 
   deploy-worker:
     runs-on: ubuntu-latest
-    needs: deploy-producer  # ให้ทำต่อหลังจาก deploy producer เสร็จ (หรือจะแยกอิสระก็ได้)
+    needs: deploy-producer  # ทำต่อหลังจาก deploy producer สำเร็จ
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -62,7 +62,7 @@ jobs:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           REPOSITORY: movie-pipeline-lambda-worker
           IMAGE_TAG: latest
-        working-directory: ./worker  # ระบุโฟลเดอร์ของ worker
+        working-directory: ./worker_for_daily_changes  # โฟลเดอร์ของ worker
         run: |
           docker build --platform linux/amd64 --provenance=false -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
@@ -72,3 +72,37 @@ jobs:
           aws lambda update-function-code \
             --function-name movie-pipeline-lambda-worker \
             --image-uri ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/movie-pipeline-lambda-worker:latest
+
+  deploy-snapshot:
+    runs-on: ubuntu-latest
+    needs: deploy-worker  # ทำต่อหลังจาก deploy worker สำเร็จ
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, Tag, and Push Snapshot Image to ECR
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: movie-pipeline-lambda-snapshot
+          IMAGE_TAG: latest
+        working-directory: ./fetcher_for_daily_snapshot  # โฟลเดอร์ของ daily snapshot
+        run: |
+          docker build --platform linux/amd64 --provenance=false -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
+          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+
+      - name: Update Snapshot Lambda Function Code
+        run: |
+          aws lambda update-function-code \
+            --function-name movie-pipeline-lambda-snapshot \
+            --image-uri ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/movie-pipeline-lambda-snapshot:latest
