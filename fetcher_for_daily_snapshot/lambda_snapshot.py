@@ -350,7 +350,7 @@ def lambda_handler(event, context):
     # ...
     if final_payload:
         s3_partition_key = (
-            f"raw/daily_snapshot/year={snapshot_date.year}/month={snapshot_date.month:02d}/day={snapshot_date.day:02d}/"
+            f"raw/movie_daily_snapshot/year={snapshot_date.year}/month={snapshot_date.month:02d}/day={snapshot_date.day:02d}/"
             f"movies_snapshot_{snapshot_date_str}.json"
         )
         upload_json_to_s3(ndjson_final_payload, S3_BUCKET_NAME, s3_partition_key)

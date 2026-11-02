@@ -185,7 +185,7 @@ def lambda_handler(event, context):
 
         # Hive-compatible date partitioning allows AWS Athena / Glue Crawlers to perform partition pruning
         s3_key = (
-            f"raw/daily_changes/year={utc_now.year}/month={utc_now.month:02d}/day={utc_now.day:02d}/"
+            f"raw/movie_details/daily_changes/year={utc_now.year}/month={utc_now.month:02d}/day={utc_now.day:02d}/"
             f"movies_batch_{timestamp_str}.json"
         )
 
