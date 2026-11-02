@@ -226,11 +226,10 @@ def upload_json_to_s3(payload: list[dict], bucket: str, object_key: str) -> None
         object_key: Destination object key path within S3.
     """
     try:
-        json_buffer = json.dumps(payload, ensure_ascii=False)
         s3_client.put_object(
             Bucket=bucket,
             Key=object_key,
-            Body=json_buffer.encode("utf-8"),
+            Body=payload.encode("utf-8"),
             ContentType="application/json",
         )
         logger.info(
@@ -338,9 +337,6 @@ def lambda_handler(event, context):
         len(final_payload),
     )
 
-    ndjson_final_payload = (
-        "\n".join(json.dumps(item, ensure_ascii=False) for item in final_payload) + "\n"
-    )
     # -----------------------------------------------------------------------
     # Step 4: Persist snapshot payload into partitioned S3 Data Lake path
     # -----------------------------------------------------------------------
@@ -349,6 +345,10 @@ def lambda_handler(event, context):
     # {"id": ..., "title": "...", "popularity": ..., "vote_count": ..., "vote_average": ..., "release_date": "...", "snapshot_date": "..."}
     # ...
     if final_payload:
+        ndjson_final_payload = (
+            "\n".join(json.dumps(item, ensure_ascii=False) for item in final_payload)
+            + "\n"
+        )
         s3_partition_key = (
             f"raw/movie_daily_snapshot/year={snapshot_date.year}/month={snapshot_date.month:02d}/day={snapshot_date.day:02d}/"
             f"movies_snapshot_{snapshot_date_str}.json"

@@ -206,10 +206,10 @@ def lambda_handler(event, context):
             s3_client.put_object(
                 Bucket=S3_BUCKET_NAME,
                 Key=s3_key,
-                Body=json.dumps(ndjson_body, ensure_ascii=False).encode("utf-8"),
+                Body=ndjson_body.encode("utf-8"),
                 ContentType="application/json",
             )
-            logger.info("Uploaded %s records to %s", len(ndjson_body), s3_key)
+            logger.info("Uploaded %s records to %s", len(enriched_records), s3_key)
         except ClientError as err:
             logger.error("Failed to upload batch to S3: %s", err)
             # Architectural Fault Tolerance:
