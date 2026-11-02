@@ -338,27 +338,22 @@ def lambda_handler(event, context):
         len(final_payload),
     )
 
+    ndjson_final_payload = (
+        "\n".join(json.dumps(item, ensure_ascii=False) for item in final_payload) + "\n"
+    )
     # -----------------------------------------------------------------------
     # Step 4: Persist snapshot payload into partitioned S3 Data Lake path
     # -----------------------------------------------------------------------
-    # Schema Blueprint of JSON written to S3 (Array of movie objects):
-    # [
-    #     {
-    #         "id": 1184918,
-    #         "title": "The Wild Robot",
-    #         "popularity": 842.31,
-    #         "vote_count": 1824,
-    #         "vote_average": 8.52,
-    #         "release_date": "2026-09-20",
-    #         "snapshot_date": "2026-10-15"
-    #     }, ...
-    # ]
+    # Schema Blueprint of NDJSON written to S3 (One movie record per line):
+    # {"id": 1184918, "title": "The Wild Robot", "popularity": 842.31, "vote_count": 1824, "vote_average": 8.52, "release_date": "2026-09-20", "snapshot_date": "2026-10-15"}
+    # {"id": ..., "title": "...", "popularity": ..., "vote_count": ..., "vote_average": ..., "release_date": "...", "snapshot_date": "..."}
+    # ...
     if final_payload:
         s3_partition_key = (
             f"raw/daily_snapshot/year={snapshot_date.year}/month={snapshot_date.month:02d}/day={snapshot_date.day:02d}/"
             f"movies_snapshot_{snapshot_date_str}.json"
         )
-        upload_json_to_s3(final_payload, S3_BUCKET_NAME, s3_partition_key)
+        upload_json_to_s3(ndjson_final_payload, S3_BUCKET_NAME, s3_partition_key)
 
     # Schema Blueprint of summary response dict:
     # {

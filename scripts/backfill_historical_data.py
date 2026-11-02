@@ -252,7 +252,7 @@ def run_pipeline(start_year: int = 2016) -> None:
     for year in range(start_year, current_year + 1):
         max_month: int = current_month if year == current_year else 12
 
-        for month in range(1, max_month + 1):
+        for month in range(11, max_month + 1):
             start_date = f"{year}-{month:02d}-01"
 
             # Bound end date to current day if processing active current month
@@ -294,9 +294,10 @@ def run_pipeline(start_year: int = 2016) -> None:
             # Stage 3: Load staged records into S3 Data Lake partition
             if monthly_payload:
                 s3_partition_key = (
-                    f"raw/historical/year={year}/month={month:02d}/"
+                    f"raw/movie_details/historical/year={year}/month={month:02d}/"
                     f"movies_{year}_{month:02d}.json"
                 )
+
                 upload_json_to_s3(monthly_payload, S3_BUCKET_NAME, s3_partition_key)
 
             # Stage 4: Explicit memory management
@@ -307,4 +308,4 @@ def run_pipeline(start_year: int = 2016) -> None:
 
 
 if __name__ == "__main__":
-    run_pipeline(start_year=2018)
+    run_pipeline(start_year=2026)

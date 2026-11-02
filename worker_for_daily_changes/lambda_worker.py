@@ -185,31 +185,31 @@ def lambda_handler(event, context):
 
         # Hive-compatible date partitioning allows AWS Athena / Glue Crawlers to perform partition pruning
         s3_key = (
-            f"raw/daily/year={utc_now.year}/month={utc_now.month:02d}/day={utc_now.day:02d}/"
+            f"raw/daily_changes/year={utc_now.year}/month={utc_now.month:02d}/day={utc_now.day:02d}/"
             f"movies_batch_{timestamp_str}.json"
         )
+
+        ndjson_body = (
+            "\n".join(json.dumps(item, ensure_ascii=False) for item in enriched_records)
+            + "\n"
+        )
+
         try:
-            # Direct multi-record JSON staging into S3 Data Lake
+            # Direct multi-record NDJSON staging into S3 Data Lake
             # ---------------------------------------------------------------
-            # SCHEMA: S3 Persisted Batch Payload (Array of Enriched Objects)
-            # [
-            #   {
-            #     "id": 550,
-            #     "title": "Fight Club",
-            #     "adult": false,
-            #     "credits": {...},
-            #     "keywords": {...}
-            #   },
-            #   ...
-            # ]
+            # FORMAT: Newline Delimited JSON (NDJSON / JSON Lines)
+            # SCHEMA: One Enriched JSON Object per Line
+            # {"id": 550, "title": "Fight Club", "adult": false, "credits": {...}, "keywords": {...}}
+            # {"id": 551, "title": "Poseidon", "adult": false, "credits": {...}, "keywords": {...}}
+            # ...
             # ---------------------------------------------------------------
             s3_client.put_object(
                 Bucket=S3_BUCKET_NAME,
                 Key=s3_key,
-                Body=json.dumps(enriched_records, ensure_ascii=False).encode("utf-8"),
+                Body=json.dumps(ndjson_body, ensure_ascii=False).encode("utf-8"),
                 ContentType="application/json",
             )
-            logger.info("Uploaded %s records to %s", len(enriched_records), s3_key)
+            logger.info("Uploaded %s records to %s", len(ndjson_body), s3_key)
         except ClientError as err:
             logger.error("Failed to upload batch to S3: %s", err)
             # Architectural Fault Tolerance:
