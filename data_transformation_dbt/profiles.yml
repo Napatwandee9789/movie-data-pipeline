@@ -1,0 +1,12 @@
+movie_data_warehouse:
+  outputs:
+    dev:
+      type: athena
+      region_name: ap-southeast-2          
+      schema: movie_data_warehouse                   
+      database: awsdatacatalog
+      workgroup: primary  
+      s3_staging_dir: s3://my-personal-movie-data-lake/athena-query-results/
+      s3_data_dir: s3://my-personal-movie-data-lake/gold/
+      threads: 4
+  target: dev

@@ -1,0 +1,243 @@
+version: 2
+
+sources:
+  - name: movie_raw_lake
+    description: "Raw external JSON tables cataloged in AWS Glue under movie_raw_lake database."
+    database: awsdatacatalog
+    schema: movie_raw_lake
+
+    tables:
+      # 1. Historical Movies (Partitioned by year, month)
+      - name: ext_raw_movie_historical
+        description: "Backfilled movie details partitioned by release year and month."
+        columns:
+          - name: id
+            description: "TMDb unique movie identifier."
+            data_type: bigint
+            tests:
+              - not_null
+          - name: title
+            data_type: string
+          - name: original_title
+            data_type: string
+          - name: original_language
+            data_type: string
+          - name: overview
+            data_type: string
+          - name: tagline
+            data_type: string
+          - name: status
+            data_type: string
+          - name: release_date
+            data_type: string
+          - name: runtime
+            data_type: integer
+          - name: budget
+            data_type: bigint
+          - name: revenue
+            data_type: bigint
+          - name: popularity
+            data_type: double
+          - name: vote_average
+            data_type: double
+          - name: vote_count
+            data_type: integer
+          - name: adult
+            data_type: boolean
+          - name: video
+            data_type: boolean
+          - name: homepage
+            data_type: string
+          - name: imdb_id
+            data_type: string
+          - name: poster_path
+            data_type: string
+          - name: backdrop_path
+            data_type: string
+          - name: belongs_to_collection
+            data_type: struct
+          - name: genres
+            data_type: array
+          - name: origin_country
+            data_type: array
+          - name: production_companies
+            data_type: array
+          - name: production_countries
+            data_type: array
+          - name: spoken_languages
+            data_type: array
+          - name: keywords
+            data_type: struct
+          - name: credits
+            data_type: struct
+          - name: year
+            description: "Partition column (year)."
+            data_type: string
+          - name: month
+            description: "Partition column (month, 2 digits)."
+            data_type: string
+
+      # 2. Daily Changes (Partitioned by year, month, day)
+      - name: ext_raw_movie_daily_changes
+        description: "Daily movie updates and changes ingested from TMDb changes endpoint."
+        columns:
+          - name: id
+            description: "TMDb unique movie identifier."
+            data_type: bigint
+            tests:
+              - not_null
+          - name: title
+            data_type: string
+          - name: original_title
+            data_type: string
+          - name: original_language
+            data_type: string
+          - name: overview
+            data_type: string
+          - name: tagline
+            data_type: string
+          - name: status
+            data_type: string
+          - name: release_date
+            data_type: string
+          - name: runtime
+            data_type: integer
+          - name: budget
+            data_type: bigint
+          - name: revenue
+            data_type: bigint
+          - name: popularity
+            data_type: double
+          - name: vote_average
+            data_type: double
+          - name: vote_count
+            data_type: integer
+          - name: adult
+            data_type: boolean
+          - name: video
+            data_type: boolean
+          - name: homepage
+            data_type: string
+          - name: imdb_id
+            data_type: string
+          - name: poster_path
+            data_type: string
+          - name: backdrop_path
+            data_type: string
+          - name: belongs_to_collection
+            data_type: struct
+          - name: genres
+            data_type: array
+          - name: origin_country
+            data_type: array
+          - name: production_companies
+            data_type: array
+          - name: production_countries
+            data_type: array
+          - name: spoken_languages
+            data_type: array
+          - name: keywords
+            data_type: struct
+          - name: credits
+            data_type: struct
+          - name: year
+            description: "Partition column (year)."
+            data_type: string
+          - name: month
+            description: "Partition column (month, 2 digits)."
+            data_type: string
+          - name: day
+            description: "Partition column (day, 2 digits)."
+            data_type: string
+
+      # 3. Daily Snapshot (Partitioned by year, month, day)
+      - name: ext_raw_movie_daily_snapshot
+        description: "Daily tracking snapshots for movie engagement metrics (popularity, votes)."
+        columns:
+          - name: id
+            description: "TMDb unique movie identifier."
+            data_type: bigint
+            tests:
+              - not_null
+          - name: title
+            data_type: string
+          - name: original_title
+            data_type: string
+          - name: original_language
+            data_type: string
+          - name: overview
+            data_type: string
+          - name: tagline
+            data_type: string
+          - name: status
+            data_type: string
+          - name: release_date
+            data_type: string
+          - name: runtime
+            data_type: integer
+          - name: budget
+            data_type: bigint
+          - name: revenue
+            data_type: bigint
+          - name: popularity
+            data_type: double
+          - name: vote_average
+            data_type: double
+          - name: vote_count
+            data_type: integer
+          - name: adult
+            data_type: boolean
+          - name: video
+            data_type: boolean
+          - name: homepage
+            data_type: string
+          - name: imdb_id
+            data_type: string
+          - name: poster_path
+            data_type: string
+          - name: backdrop_path
+            data_type: string
+          - name: belongs_to_collection
+            data_type: struct
+          - name: genres
+            data_type: array
+          - name: origin_country
+            data_type: array
+          - name: production_companies
+            data_type: array
+          - name: production_countries
+            data_type: array
+          - name: spoken_languages
+            data_type: array
+          - name: year
+            description: "Partition column (year)."
+            data_type: string
+          - name: month
+            description: "Partition column (month, 2 digits)."
+            data_type: string
+          - name: day
+            description: "Partition column (day, 2 digits)."
+            data_type: string
+
+      # 4. Master Genres List (Non-partitioned)
+      - name: ext_raw_genres
+        description: "Lookup table containing array of official TMDb movie genres."
+        columns:
+          - name: genres
+            description: "List of genre objects containing id and name."
+            data_type: array
+
+      # 5. Master Countries List (Non-partitioned)
+      - name: ext_raw_countries
+        description: "Reference lookup table for ISO-3166-1 country codes and localized names."
+        columns:
+          - name: iso_3166_1
+            description: "Two-letter country code (Primary Key)."
+            data_type: string
+            tests:
+              - not_null
+              - unique
+          - name: english_name
+            data_type: string
+          - name: native_name
+            data_type: string

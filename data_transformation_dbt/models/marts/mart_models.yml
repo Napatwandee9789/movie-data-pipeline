@@ -1,0 +1,474 @@
+version: 2
+
+models:
+  # ==========================================
+  # Dimensions
+  # ==========================================
+  - name: dim_movies
+    description: "Core movie dimension storing master metadata, release schedule references, and calculated financial metrics."
+    columns:
+      - name: movie_sur_id
+        description: "Primary Surrogate Key of the movie."
+        data_tests:
+          - unique
+          - not_null
+      - name: movie_source_id
+        description: "Natural business key originating from the TMDb API."
+        data_tests:
+          - unique
+          - not_null
+      - name: title
+        description: "Localized release title of the movie."
+      - name: original_title
+        description: "Original language title of the movie."
+        data_tests:
+          - not_null
+      - name: original_language
+        description: "ISO 639-1 code representing the primary spoken language."
+      - name: release_date_sur_id
+        description: "Foreign key referencing dim_dates for the theatrical release date."
+        data_tests:
+          - relationships:
+              to: ref('dim_dates')
+              field: date_sur_id
+      - name: backdrop_path
+        description: "Relative URL path to the backdrop banner image."
+      - name: poster_path
+        description: "Relative URL path to the primary poster image."
+      - name: runtime
+        description: "Total running time of the movie in minutes."
+      - name: overview
+        description: "Textual plot summary and synopsis."
+      - name: status
+        description: "Production and distribution status (e.g., Released, In Production)."
+      - name: budget
+        description: "Production budget in USD."
+      - name: revenue
+        description: "Total worldwide box office revenue in USD."
+      - name: profit
+        description: "Calculated net financial profit (revenue - budget) in USD."
+      - name: roi
+        description: "Calculated return on investment ratio ((revenue - budget) / budget)."
+      - name: revenue_multiplier
+        description: "Financial performance multiplier calculated as revenue / budget."
+      - name: loaded_at
+        description: "Timestamp when the record was initially ingested into the data lake."
+      - name: updated_at
+        description: "Timestamp when the record was last refreshed in the data warehouse."
+
+  - name: dim_persons
+    description: "Person dimension cataloging cast members, crew personnel, and directors."
+    columns:
+      - name: person_sur_id
+        description: "Primary Surrogate Key of the person."
+        data_tests:
+          - unique
+          - not_null
+      - name: person_source_id
+        description: "Natural business key of the individual originating from the TMDb API."
+        data_tests:
+          - unique
+          - not_null
+      - name: name
+        description: "Full professional name of the person."
+        data_tests:
+          - not_null
+      - name: gender
+        description: "Gender identity classification of the individual."
+      - name: profile_path
+        description: "Relative URL path to the headshot portrait image."
+      - name: loaded_at
+        description: "Timestamp when the person record was initially ingested."
+      - name: updated_at
+        description: "Timestamp when the person record was last modified."
+
+  - name: dim_companies
+    description: "Production studio and distributing company dimension."
+    columns:
+      - name: company_sur_id
+        description: "Primary Surrogate Key of the production company."
+        data_tests:
+          - unique
+          - not_null
+      - name: company_source_id
+        description: "Natural business key originating from the TMDb API."
+        data_tests:
+          - unique
+          - not_null
+      - name: company_name
+        description: "Registered trade name of the company or studio."
+        data_tests:
+          - not_null
+      - name: logo_path
+        description: "Relative URL path to the studio or company logo image."
+      - name: loaded_at
+        description: "Timestamp when the company record was initially ingested."
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: "Timestamp when the company record was last updated."
+
+  - name: dim_genres
+    description: "Genre lookup dimension defining thematic classifications."
+    columns:
+      - name: genre_sur_id
+        description: "Primary Surrogate Key of the genre."
+        data_tests:
+          - unique
+          - not_null
+      - name: genre_source_id
+        description: "Natural business key originating from the TMDb API."
+        data_tests:
+          - unique
+          - not_null:
+              config:
+                where: "genre_sur_id NOT IN ('-1', '-2')"
+      - name: genre
+        description: "Descriptive name of the movie genre (e.g., Action, Sci-Fi)."
+        data_tests:
+          - not_null:
+              config:
+                where: "genre_sur_id NOT IN ('-1', '-2')"
+
+  - name: dim_keywords
+    description: "Keyword lookup dimension cataloging thematic tags and descriptive motifs."
+    columns:
+      - name: keyword_sur_id
+        description: "Primary Surrogate Key of the keyword."
+        data_tests:
+          - unique
+          - not_null
+      - name: keyword_source_id
+        description: "Natural business key originating from the TMDb API."
+        data_tests:
+          - unique
+          - not_null
+      - name: keyword
+        description: "Textual keyword label or tag name."
+        data_tests:
+          - not_null
+      - name: loaded_at
+        description: "Timestamp when the keyword record was ingested."
+
+  - name: dim_dates
+    description: "Standard calendar date dimension table for temporal rollups and slicing."
+    columns:
+      - name: date_sur_id
+        description: "Surrogate Key formatted as an integer string (YYYYMMDD)."
+        data_tests:
+          - unique
+          - not_null
+      - name: full_date
+        description: "Calendar date in standard date format (YYYY-MM-DD)."
+        data_tests:
+          - unique
+          - not_null:
+              config:
+                where: "date_sur_id != -1"
+      - name: day
+        description: "Calendar day of the month (1-31)."
+        data_tests:
+          - not_null:
+              config:
+                where: "date_sur_id != -1"
+      - name: month
+        description: "Calendar month number (1-12)."
+        data_tests:
+          - not_null:
+              config:
+                where: "date_sur_id != -1"
+      - name: quarter
+        description: "Calendar quarter number (1-4)."
+        data_tests:
+          - not_null:
+              config:
+                where: "date_sur_id != -1"
+      - name: year
+        description: "Four-digit calendar year."
+        data_tests:
+          - not_null:
+              config:
+                where: "date_sur_id != -1"
+
+  - name: dim_countries
+    description: "ISO country reference dimension defining production and release geographies."
+    columns:
+      - name: country_sur_id
+        description: "Primary Surrogate Key of the country."
+        data_tests:
+          - unique
+          - not_null
+      - name: country_name
+        description: "Standard English country name."
+        data_tests:
+          - not_null:
+              config:
+                where: "country_sur_id != '-1'"
+      - name: iso_3166_1
+        description: "Two-letter ISO 3166-1 alpha-2 country code."
+        data_tests:
+          - not_null:
+              config:
+                where: "country_sur_id != '-1'"
+  # ==========================================
+  # Bridges (Many-to-Many)
+  # ==========================================
+  - name: bridge_movie_person
+    description: "Bridge resolving many-to-many associations between movies, individuals, and production roles."
+    columns:
+      - name: movie_person_bridge_id
+        description: "Primary Surrogate Key of the movie-person-role relationship."
+        data_tests:
+          - unique
+          - not_null
+      - name: movie_sur_id
+        description: "Foreign key referencing dim_movies."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_movies')
+              field: movie_sur_id
+      - name: person_sur_id
+        description: "Foreign key referencing dim_persons."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_persons')
+              field: person_sur_id
+      - name: role
+        description: "Functional responsibility assigned on the project (e.g., Actor, Director, Writer)."
+        data_tests:
+          - not_null
+      - name: loaded_at
+        description: "Timestamp when the association was ingested."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - movie_sur_id
+            - person_sur_id
+            - role
+
+  - name: bridge_movie_company
+    description: "Bridge resolving many-to-many associations between movies and producing companies."
+    columns:
+      - name: movie_company_bridge_id
+        description: "Primary Surrogate Key of the movie-company relationship."
+        data_tests:
+          - unique
+          - not_null
+      - name: movie_sur_id
+        description: "Foreign key referencing dim_movies."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_movies')
+              field: movie_sur_id
+      - name: company_sur_id
+        description: "Foreign key referencing dim_companies."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_companies')
+              field: company_sur_id
+      - name: loaded_at
+        description: "Timestamp when the association was ingested."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - movie_sur_id
+            - company_sur_id
+
+  - name: bridge_movie_genre
+    description: "Bridge resolving many-to-many associations between movies and genre classifications."
+    columns:
+      - name: movie_genre_bridge_id
+        description: "Primary Surrogate Key of the movie-genre relationship."
+        data_tests:
+          - unique
+          - not_null
+      - name: movie_sur_id
+        description: "Foreign key referencing dim_movies."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_movies')
+              field: movie_sur_id
+      - name: genre_sur_id
+        description: "Foreign key referencing dim_genres."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_genres')
+              field: genre_sur_id
+      - name: loaded_at
+        description: "Timestamp when the association was ingested."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - movie_sur_id
+            - genre_sur_id
+
+  - name: bridge_movie_keyword
+    description: "Bridge resolving many-to-many associations between movies and thematic keywords."
+    columns:
+      - name: movie_keyword_bridge_id
+        description: "Primary Surrogate Key of the movie-keyword relationship."
+        data_tests:
+          - unique
+          - not_null
+      - name: movie_sur_id
+        description: "Foreign key referencing dim_movies."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_movies')
+              field: movie_sur_id
+      - name: keyword_sur_id
+        description: "Foreign key referencing dim_keywords."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_keywords')
+              field: keyword_sur_id
+      - name: loaded_at
+        description: "Timestamp when the association was ingested."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - movie_sur_id
+            - keyword_sur_id
+
+  - name: bridge_movie_country
+    description: "Bridge resolving many-to-many associations between movies and filming/production countries."
+    columns:
+      - name: movie_country_bridge_id
+        description: "Primary Surrogate Key of the movie-country relationship."
+        data_tests:
+          - unique
+          - not_null
+      - name: movie_sur_id
+        description: "Foreign key referencing dim_movies."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_movies')
+              field: movie_sur_id
+      - name: country_sur_id
+        description: "Foreign key referencing dim_countries."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_countries')
+              field: country_sur_id
+      - name: loaded_at
+        description: "Timestamp when the association was ingested."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - movie_sur_id
+            - country_sur_id
+
+  # ==========================================
+  # Fact Tables
+  # ==========================================
+  - name: fact_movie_daily_engagement_100d
+    description: "Periodic snapshot fact tracking daily performance, voting metrics, and popularity over the initial 100 days from release."
+    columns:
+      - name: fact_movie_daily_id
+        description: "Primary Surrogate Key of the periodic daily engagement record."
+        data_tests:
+          - unique
+          - not_null
+      - name: movie_sur_id
+        description: "Foreign key referencing dim_movies."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_movies')
+              field: movie_sur_id
+      - name: days_since_release
+        description: "Elapsed duration in days measured from the theatrical release date."
+        data_tests:
+          - not_null
+      - name: vote_average
+        description: "Weighted average score rated by platform users (scale 0-10)."
+      - name: vote_count
+        description: "Cumulative total count of user ratings recorded."
+      - name: popularity
+        description: "Dynamic algorithmic engagement score computed by TMDb."
+      - name: collected_date_sur_id
+        description: "Foreign key referencing dim_dates indicating the snapshot capture date."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_dates')
+              field: date_sur_id
+      - name: collected_at
+        description: "Exact UTC timestamp when the metric snapshot was queried and recorded."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - movie_sur_id
+            - collected_date_sur_id
+
+  - name: fact_movie_keyword_tfidf
+    description: "Accumulating fact storing Term Frequency-Inverse Document Frequency (TF-IDF) weights measuring keyword specificity across year-genre-country segmentations."
+    columns:
+      - name: fact_movie_keyword_tfidf_id
+        description: "Primary Surrogate Key of the calculated TF-IDF record."
+        data_tests:
+          - unique
+          - not_null
+      - name: release_year
+        description: "Release year partition extracted from the movie release date."
+        data_tests:
+          - not_null:
+              config:
+                where: "aggregation_level IN ('year_genre_country', 'year_genre', 'year_country', 'year')"
+      - name: genre_sur_id
+        description: "Foreign key referencing dim_genres for the target segment."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_genres')
+              field: genre_sur_id
+      - name: country_sur_id
+        description: "Foreign key referencing dim_countries for the target segment."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_countries')
+              field: country_sur_id
+      - name: keyword_sur_id
+        description: "Foreign key referencing dim_keywords representing the analyzed term."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_keywords')
+              field: keyword_sur_id
+      - name: total_keyword_by_group
+        description: "Absolute term frequency (term_count): occurrences of the keyword within the specific year-genre-country corpus group."
+      - name: total_group_by_keyword
+        description: "Document frequency (doc_freq): total distinct year-genre-country groups containing this keyword."
+      - name: total_group
+        description: "Corpus size (total_year_genre_countries): total count of all distinct year-genre-country groups across the dataset."
+      - name: tf
+        description: "Term Frequency normalized relative to the sum of all keyword occurrences within the corpus group."
+      - name: idf
+        description: "Smooth Inverse Document Frequency: ln((1 + total_group) / (1 + doc_freq)) + 1."
+      - name: tf_idf
+        description: "Composite TF-IDF score (tf * idf) quantifying keyword prominence and uniqueness within the segment."
+      - name: aggregation_level
+        description: "Contextual grain of the statistical calculation (e.g., year_genre_country)."
+        data_tests:
+          - not_null
+      - name: calculated_at
+        description: "Timestamp when the statistical model calculation was executed."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - aggregation_level
+            - keyword_sur_id
+            - release_year
+            - genre_sur_id
+            - country_sur_id

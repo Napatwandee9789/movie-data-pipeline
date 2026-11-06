@@ -1,0 +1,51 @@
+
+# Name your project! Project names should contain only lowercase characters
+# and underscores. A good package name should reflect your organization's
+# name or the intended use of these models
+name: 'data_transformation_dbt'
+version: '1.0.0'
+
+# This setting configures which "profile" dbt uses for this project.
+profile: 'movie_data_warehouse'
+
+# These configurations specify where dbt should look for different types of files.
+# The `model-paths` config, for example, states that models in this project can be
+# found in the "models/" directory. You probably won't need to change these!
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+
+clean-targets:         # directories to be removed by `dbt clean`
+  - "target"
+  - "dbt_packages"
+
+
+models:
+  data_transformation_dbt:
+    staging:
+      +materialized: view
+      +tags: ["daily_run"]
+
+    intermediate:
+      +materialized: view
+      +tags: ["daily_run"]
+
+    marts:
+      +table_type: iceberg
+      +format: parquet
+      
+      dimensions:
+        +tags: ["daily_run"]
+      
+      bridges:
+        +tags: ["daily_run"]
+      
+      facts:
+        fact_movie_daily_engagement_100d:
+          +tags: ["daily_run"]
+
+        fact_movie_keyword_tfidf:
+          +tags: ["monthly_run"]
+
+
+
