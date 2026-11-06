@@ -266,8 +266,12 @@ dbt run
 dbt test
 ```
 
+---
+
 
 ## EN-Version
+
+---
 
 ## Overview
 
@@ -278,7 +282,7 @@ dimensional model (Star Schema) using dbt Core and Amazon Athena. Apache
 Airflow, hosted on AWS EC2, orchestrates the workflow, while GitHub
 Actions automates Continuous Deployment (CD).
 
-------------------------------------------------------------------------
+---
 
 ## 1. Motivation & Objectives
 
@@ -331,7 +335,7 @@ support financial performance analysis, movie popularity tracking, and
 the discovery of prominent content themes that may inspire the
 development of future film projects.
 
-------------------------------------------------------------------------
+---
 
 ## 2. System Architecture Flow
 
@@ -365,177 +369,51 @@ development of future film projects.
                                    [S3 Target Storage: gold/ (Parquet / Marts)]
 ```
 
-------------------------------------------------------------------------
+---
 
 ## 3. Technical Challenges & Engineering Trade-offs
 
-  --------------------------------------------------------------------------------
-  Engineering         Bottleneck /        Architectural Solution Trade-off &
-  Challenge           Failure Mode                               Mitigation
-  ------------------- ------------------- ---------------------- -----------------
-  **500-Page API      The                 **Window Splitting     **Trade-off:**
-  Limit**             `/discover/movie`   Strategy:** Divide the Slightly
-                      endpoint has a      search period into two increases the
-                      maximum retrieval   windows: `0–14 days`   number of API
-                      limit of 500 pages, and `15–30 days`.      requests while
-                      creating a risk of  Combine the results    aiming to improve
-                      data loss during    and deduplicate them   data
-                      periods with a high using `movie_id`.      completeness.
-                      volume of movie                            
-                      releases.                                  
+| Engineering Challenge | Bottleneck / Failure Mode | Architectural Solution | Trade-off & Mitigation |
+|---|---|---|---|
+| **500-Page API Limit** | The `/discover/movie` endpoint has a maximum retrieval limit of 500 pages, creating a risk of data loss during periods with a high volume of movie releases. | **Window Splitting Strategy:** Divide the search period into two windows: `0–14 days` and `15–30 days`. Combine the results and deduplicate them using `movie_id`. | **Trade-off:** Slightly increases the number of API requests while aiming to improve data completeness. |
+| **Ingestion Bottleneck** | Daily Changes may contain several thousand movie IDs. Fetching details sequentially with a single worker can take more than 30 minutes. | **Producer-Consumer Pattern:** An AWS Lambda Producer collects movie IDs and sends them to Amazon SQS. A Lambda Worker Pool then retrieves movie details in parallel. | **Trade-off:** Introduces temporary throughput spikes, while reducing ingestion time to a few minutes. |
+| **Barrier Synchronization** | Lambda Workers execute asynchronously and independently, so Airflow does not inherently know when all processing has completed. | **7-Minute Synchronization Delay:** Configure a static 7-minute delay in Airflow, based on a typical processing time of no more than 5 minutes plus a 2-minute safety buffer. | **Trade-off:** Adds waiting time, but reduces the risk of dbt starting before ingestion has finished. |
+| **Server Memory Spikes** | Airflow running through Docker Compose on EC2 experienced out-of-memory (OOM) events, causing the operating system to terminate processes. | **OS Swap Memory Tuning:** Allocate 4 GB of swap space on the Ubuntu host to absorb temporary memory spikes. | **Trade-off:** Disk I/O is slower than RAM, but swap provides additional memory headroom without upgrading to a more expensive instance. |
 
-  **Ingestion         Daily Changes may   **Producer--Consumer   **Trade-off:**
-  Bottleneck**        contain several     Pattern:** An AWS      Introduces
-                      thousand movie IDs. Lambda Producer        temporary
-                      Fetching details    collects movie IDs and throughput
-                      sequentially with a sends them to Amazon   spikes, while
-                      single worker can   SQS. A Lambda Worker   reducing
-                      take more than 30   Pool then retrieves    ingestion time to
-                      minutes.            movie details in       a few minutes.
-                                          parallel.              
-
-  **Barrier           Lambda Workers      **7-Minute             **Trade-off:**
-  Synchronization**   execute             Synchronization        Adds waiting
-                      asynchronously and  Delay:** Configure a   time, but reduces
-                      independently, so   static 7-minute delay  the risk of dbt
-                      Airflow does not    in Airflow, based on a starting before
-                      inherently know     typical processing     ingestion has
-                      when all processing time of no more than 5 finished.
-                      has completed.      minutes plus a         
-                                          2-minute safety        
-                                          buffer.                
-
-  **Server Memory     Airflow running     **OS Swap Memory       **Trade-off:**
-  Spikes**            through Docker      Tuning:** Allocate 4   Disk I/O is
-                      Compose on EC2      GB of swap space on    slower than RAM,
-                      experienced         the Ubuntu host to     but swap provides
-                      out-of-memory (OOM) absorb temporary       additional memory
-                      events, causing the memory spikes.         headroom without
-                      operating system to                        upgrading to a
-                      terminate                                  more expensive
-                      processes.                                 instance.
-  --------------------------------------------------------------------------------
-
-------------------------------------------------------------------------
+---
 
 ## 4. ELT Optimization Matrix
 
-  --------------------------------------------------------------------------------------------
-  Optimization        Layer             Implementation Details         Quantitative /
-  Technique                                                            Technical Impact
-  ------------------- ----------------- ------------------------------ -----------------------
-  **Hive-Style        Storage (S3)      Organize S3 paths using        Can reduce Athena data
-  Partitioning**                        `year=.../month=.../day=...`   scanned by **more than
-                                        and register the partitions in 90%** for date-filtered
-                                        Glue Catalog.                  queries when only the
-                                                                       relevant daily
-                                                                       partitions need to be
-                                                                       read.
+| Optimization Technique | Layer | Implementation Details | Quantitative / Technical Impact |
+|---|---|---|---|
+| **Hive-Style Partitioning** | Storage (S3) | Organize S3 paths using `year=.../month=.../day=...` and register the partitions in Glue Catalog. | Can reduce Athena data scanned by **more than 90%** for date-filtered queries when only the relevant daily partitions need to be read. |
+| **Strict NDJSON Ingestion** | Ingestion | Store raw data under `raw/` exclusively in Newline Delimited JSON (NDJSON) format. | Supports record-by-record JSON processing and avoids the memory overhead associated with parsing a single root JSON array. |
+| **Parallel Processing via SQS** | Ingestion | Use SQS as a buffer between the Producer and Workers to enable parallel processing. | Reduces ingestion time from **30+ minutes to a few minutes**, while allowing the workload to scale more flexibly. |
+| **Pre-unnested Bridge Tables** | Data Modeling | Extract nested arrays (Cast, Crew, Companies, and Genres) into bridge tables ahead of analytical queries. | Avoids repeatedly executing `CROSS JOIN UNNEST()` at query time and can improve dashboard query performance. |
+| **Incremental Merge** | Transformation (dbt) | Use dbt `incremental` materialization with the `merge` strategy for most models. | Processes and writes only delta records, reducing transformation time and the amount of data written to S3. |
+| **Analytical Pre-computation** | Analytics | Calculate Smooth TF-IDF across eight analytical dimensions and materialize the results in advance. | Moves text-mining computation out of BI queries, allowing dashboards to retrieve precomputed results directly. |
+| **OS Memory Swap** | Orchestration | Allocate 4 GB of swap space on the EC2 host. | Provides additional memory headroom and helps reduce the risk of the Linux OOM Killer terminating Airflow Scheduler or Worker processes during memory spikes. |
 
-  **Strict NDJSON     Ingestion         Store raw data under `raw/`    Supports
-  Ingestion**                           exclusively in Newline         record-by-record JSON
-                                        Delimited JSON (NDJSON)        processing and avoids
-                                        format.                        the memory overhead
-                                                                       associated with parsing
-                                                                       a single root JSON
-                                                                       array.
-
-  **Parallel          Ingestion         Use SQS as a buffer between    Reduces ingestion time
-  Processing via                        the Producer and Workers to    from **30+ minutes to a
-  SQS**                                 enable parallel processing.    few minutes**, while
-                                                                       allowing the workload
-                                                                       to scale more flexibly.
-
-  **Pre-unnested      Data Modeling     Extract nested arrays (Cast,   Avoids repeatedly
-  Bridge Tables**                       Crew, Companies, and Genres)   executing
-                                        into bridge tables ahead of    `CROSS JOIN UNNEST()`
-                                        analytical queries.            at query time and can
-                                                                       improve dashboard query
-                                                                       performance.
-
-  **Incremental       Transformation    Use dbt `incremental`          Processes and writes
-  Merge**             (dbt)             materialization with the       only delta records,
-                                        `merge` strategy for most      reducing transformation
-                                        models.                        time and the amount of
-                                                                       data written to S3.
-
-  **Analytical        Analytics         Calculate Smooth TF-IDF across Moves text-mining
-  Pre-computation**                     eight analytical dimensions    computation out of BI
-                                        and materialize the results in queries, allowing
-                                        advance.                       dashboards to retrieve
-                                                                       precomputed results
-                                                                       directly.
-
-  **OS Memory Swap**  Orchestration     Allocate 4 GB of swap space on Provides additional
-                                        the EC2 host.                  memory headroom and
-                                                                       helps reduce the risk
-                                                                       of the Linux OOM Killer
-                                                                       terminating Airflow
-                                                                       Scheduler or Worker
-                                                                       processes during memory
-                                                                       spikes.
-  --------------------------------------------------------------------------------------------
-
-------------------------------------------------------------------------
+---
 
 ## 5. Dimensional Data Model (Marts)
 
-The data architecture follows **Dimensional Modeling (Star Schema)**
-principles and is implemented using `dbt-athena`.
+The data architecture follows **Dimensional Modeling (Star Schema)** principles and is implemented using `dbt-athena`.
 
-  ------------------------------------------------------------------------------------------------------
-  Table Name                           Layer Type        Grain             Key Columns & Highlights
-  ------------------------------------ ----------------- ----------------- -----------------------------
-  `dim_movies`                         Dimension         One row per movie Surrogate Key
-                                                                           (`movie_sur_id`), financial
-                                                                           metrics (Profit, ROI, Revenue
-                                                                           Multiplier).
+| Table Name | Layer Type | Grain | Key Columns & Highlights |
+|---|---|---|---|
+| `dim_movies` | Dimension | One row per movie | Surrogate Key (`movie_sur_id`), financial metrics (Profit, ROI, Revenue Multiplier). |
+| `dim_persons` | Dimension | One row per person (cast or crew) | Surrogate Key (`person_sur_id`), with logic to select the best available profile image. |
+| `dim_companies` | Dimension | One row per production company or studio | Surrogate Key (`company_sur_id`), studio logo. |
+| `dim_genres` | Dimension | One row per movie genre | Supports default fallback records: `-1: None`, `-2: Invalid`. |
+| `dim_keywords` | Dimension | One row per keyword | Uses `merge_update_columns = []` to implement insert-only behavior. |
+| `dim_dates` | Dimension | One row per calendar date | Programmatically generated for 2016–2030 without relying on an external CSV file. |
+| `dim_countries` | Dimension | One row per country | Uses ISO-3166-1 keys with default records `-1` and `-2`. |
+| `bridge_movie_*` | Bridge (M:N) | One row per relationship pair | Composite surrogate keys, duplicate removal using `UNION`, and insert-only merge behavior. |
+| `fact_movie_daily_engagement_100d` | Fact (Periodic Snapshot) | One movie per measurement date | **Partitioned by `days_since_release`** to support retention-curve analysis. |
+| `fact_movie_keyword_tfidf` | Fact (Analytical) | One keyword per analytical slice | **Partitioned by `aggregation_level`**; stores precomputed Smooth TF-IDF values across all eight levels. |
 
-  `dim_persons`                        Dimension         One row per       Surrogate Key
-                                                         person (cast or   (`person_sur_id`), with logic
-                                                         crew)             to select the best available
-                                                                           profile image.
-
-  `dim_companies`                      Dimension         One row per       Surrogate Key
-                                                         production        (`company_sur_id`), studio
-                                                         company or studio logo.
-
-  `dim_genres`                         Dimension         One row per movie Supports default fallback
-                                                         genre             records: `-1: None`,
-                                                                           `-2: Invalid`.
-
-  `dim_keywords`                       Dimension         One row per       Uses
-                                                         keyword           `merge_update_columns = []`
-                                                                           to implement insert-only
-                                                                           behavior.
-
-  `dim_dates`                          Dimension         One row per       Programmatically generated
-                                                         calendar date     for 2016--2030 without
-                                                                           relying on an external CSV
-                                                                           file.
-
-  `dim_countries`                      Dimension         One row per       Uses ISO-3166-1 keys with
-                                                         country           default records `-1` and
-                                                                           `-2`.
-
-  `bridge_movie_*`                     Bridge (M:N)      One row per       Composite surrogate keys,
-                                                         relationship pair duplicate removal using
-                                                                           `UNION`, and insert-only
-                                                                           merge behavior.
-
-  `fact_movie_daily_engagement_100d`   Fact (Periodic    One movie per     **Partitioned by
-                                       Snapshot)         measurement date  `days_since_release`** to
-                                                                           support retention-curve
-                                                                           analysis.
-
-  `fact_movie_keyword_tfidf`           Fact (Analytical) One keyword per   **Partitioned by
-                                                         analytical slice  `aggregation_level`**; stores
-                                                                           precomputed Smooth TF-IDF
-                                                                           values across all eight
-                                                                           levels.
-  ------------------------------------------------------------------------------------------------------
-
-------------------------------------------------------------------------
+---
 
 ## 6. Automated Deployment (CI/CD Workflows)
 
@@ -551,7 +429,7 @@ GitHub Actions workflows are separated using path filters:
     `git pull` followed by `docker compose up -d --build` when Airflow
     or dbt code changes.
 
-------------------------------------------------------------------------
+---
 
 ## 7. Repository Structure
 
@@ -595,7 +473,7 @@ GitHub Actions workflows are separated using path filters:
 └── README.md
 ```
 
-------------------------------------------------------------------------
+---
 
 ## 8. Setup & Configuration
 
@@ -709,3 +587,5 @@ dbt test
 
 > **Note:** This step is optional. Under normal operation, Apache
 > Airflow invokes dbt according to the pipeline execution sequence.
+
+---
