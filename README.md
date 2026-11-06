@@ -6,6 +6,28 @@
 ![Docker](https://img.shields.io/badge/Container-Docker-2496ED?logo=docker)
 ![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF?logo=github-actions)
 
+## Table of Contents
+
+- [🇹🇭 Thai Version](#thai-version)
+  - [1. ที่มาและเป้าหมาย](#1-ที่มาและเป้าหมาย-motivation--objective)
+  - [2. แผนภาพสถาปัตยกรรมระบบ](#2-แผนภาพสถาปัตยกรรมระบบ-architecture-flow)
+  - [3. ปัญหาทางเทคนิคและการตัดสินใจเชิงวิศวกรรม](#3-ปัญหาทางเทคนิคและการตัดสินใจเชิงวิศวกรรม-technical-challenges--trade-offs)
+  - [4. ตารางการปรับแต่งความเร็วและต้นทุน](#4-ตารางการปรับแต่งความเร็วและต้นทุน-elt-optimization-matrix)
+  - [5. แบบจำลองข้อมูลระดับ Marts](#5-แบบจำลองข้อมูลระดับ-marts-dimensional-data-model)
+  - [6. การนำส่งโค้ดอัตโนมัติ](#6-การนำส่งโค้ดอัตโนมัติ-cicd-workflows)
+  - [7. โครงสร้างโปรเจกต์](#7-โครงสร้างโปรเจกต์-repository-structure)
+  - [8. วิธีการติดตั้งและรันระบบ](#8-วิธีการติดตั้งและรันระบบ-setup--configuration)
+
+- [🇬🇧 English Version](#english-version)
+  - [1. Motivation & Objectives](#1-motivation--objectives)
+  - [2. System Architecture Flow](#2-system-architecture-flow)
+  - [3. Technical Challenges & Engineering Trade-offs](#3-technical-challenges--engineering-trade-offs)
+  - [4. ELT Optimization Matrix](#4-elt-optimization-matrix)
+  - [5. Dimensional Data Model (Marts)](#5-dimensional-data-model-marts)
+  - [6. Automated Deployment (CI/CD Workflows)](#6-automated-deployment-cicd-workflows)
+  - [7. Repository Structure](#7-repository-structure)
+  - [8. Setup & Configuration](#8-setup--configuration)
+
 ## TH-Version
 
 ระบบ Data Lakehouse แบบ Event-Driven ELT Pipeline บนสถาปัตยกรรม Serverless และ Container ดึงข้อมูลภาพยนตร์จาก TMDB API จัดเก็บลง AWS S3 แปลงข้อมูลสู่ Dimensional Model (Star Schema) บน AWS Athena ด้วย dbt Core ควบคุมการทำงานอัตโนมัติด้วย Apache Airflow บน AWS EC2 พร้อมระบบ Continuous Deployment (CD) ผ่าน GitHub Actions
@@ -159,7 +181,7 @@
 
 ## 8. วิธีการติดตั้งและรันระบบ (Setup & Configuration)
 
-### 1. สิ่งที่ต้องเตรียมบน AWS (Cloud Prerequisites)
+### 8.1 สิ่งที่ต้องเตรียมบน AWS (Cloud Prerequisites)
 * **Amazon S3:** Bucket สำหรับจัดเก็บข้อมูลบน Data Lakehouse
   * โฟลเดอร์ `raw/`: เก็บข้อมูลดิบในรูปแบบ **NDJSON (Newline Delimited JSON) เท่านั้น**
   * โฟลเดอร์ `gold/`: เก็บตารางปลายทางระดับ Marts (Parquet Format)
@@ -171,7 +193,7 @@
   * สร้าง **Workgroup บน Athena** สำหรับรองรับการประมวลผล Transformation ของ dbt-athena
 * **AWS EC2:** Ubuntu Server ติดตั้ง Docker, Docker Compose และเปิด 4GB Swap Space
 
-### 2. การกำหนด Environment Variables บน AWS Lambda
+### 8.2 การกำหนด Environment Variables บน AWS Lambda
 * **Snapshot Lambda:**
   * `TMDB_API_KEY`: API Key สำหรับดึงข้อมูลจาก TMDB
   * `S3_BUCKET_NAME`: ชื่อ S3 Bucket ปลายทาง
@@ -182,7 +204,7 @@
   * `TMDB_API_KEY`: API Key สำหรับดึงข้อมูลจาก TMDB
   * `S3_BUCKET_NAME`: ชื่อ S3 Bucket ปลายทาง
 
-### 3. การกำหนด Security & CI/CD Credentials
+### 8.3 การกำหนด Security & CI/CD Credentials
 1. **GitHub Secrets:** กำหนดตัวแปรใน Repository Settings -> Secrets and variables -> Actions:
    * `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_ACCOUNT_ID`
    * `EC2_AIRFLOW_SERVER_HOST`: Public IP ของ EC2
@@ -198,9 +220,9 @@
      # กำหนด AIRFLOW_UID=50000 และตั้งค่าการเชื่อมต่อ AWS / Athena
      ```
 
-## 4. การรันระบบ (Execution)
+### 8.4 การรันระบบ (Execution)
 
-### 4.1 การเตรียมข้อมูลย้อนหลัง (Initial Historical Backfill - Optional)
+#### 8.4.1 การเตรียมข้อมูลย้อนหลัง (Initial Historical Backfill - Optional)
 
 หากต้องการโหลดข้อมูลภาพยนตร์ย้อนหลัง 10 ปี (2016–ปัจจุบัน) เพื่อสร้างชุดข้อมูลเริ่มต้นสำหรับการวิเคราะห์ภาพรวมในระยะยาว สามารถรันสคริปต์เพื่อดึงข้อมูลจาก TMDB API และบันทึกลง Amazon S3 ได้โดยตรง
 
@@ -211,27 +233,27 @@ uv run python scripts/backfill_historical_data.py
 
 > **หมายเหตุ:** ขั้นตอนนี้เป็นทางเลือก สามารถข้ามได้หากไม่ต้องการโหลดข้อมูลย้อนหลัง
 
-### 4.2 เริ่มต้นระบบ Orchestration บน EC2
+### 8.4.2 เริ่มต้นระบบ Orchestration บน EC2
 
 เข้าไปยังโฟลเดอร์ `airflow` และรัน Docker Compose เพื่อเริ่มต้นบริการ Apache Airflow
 
-\```bash
+```bash
 cd airflow
 
 # Build และเริ่มต้น Containers ใน Background
 docker compose up -d --build
-\```
+```
 
 เมื่อระบบเริ่มทำงานแล้ว สามารถเข้าใช้งาน Airflow Web UI ผ่าน Browser ได้ที่:
 
 - **URL:** `http://<EC2_IP>:8088`
 - **DAG ID:** `movie_data_pipeline_orchestration`
 
-### 4.3 การรัน dbt Models แบบ Manual (Optional)
+### 8.4.3 การรัน dbt Models แบบ Manual (Optional)
 
 หากต้องการสั่งรันกระบวนการ Data Transformation ผ่าน dbt Core ด้วยตนเอง สามารถใช้คำสั่งต่อไปนี้จากโฟลเดอร์ `data_transformation_dbt`
 
-\```bash
+```bash
 cd data_transformation_dbt
 
 # ติดตั้ง dbt Packages
@@ -242,9 +264,7 @@ dbt run
 
 # ตรวจสอบคุณภาพข้อมูลด้วย Tests
 dbt test
-\```
-
-> **หมายเหตุ:** ขั้นตอนนี้เป็นทางเลือก โดยปกติ dbt จะถูกเรียกใช้งานผ่าน Apache Airflow ตามลำดับของ Pipeline ที่กำหนดไว้
+```
 
 
 ## EN-Version
