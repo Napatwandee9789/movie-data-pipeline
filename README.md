@@ -1,10 +1,5 @@
-## 6. ELT Performance & Cost Optimization
-
-| Optimization Technique | Layer | Implementation Details | Impact / Benefit |
-|---|---|---|---|
-| **Hive-style Partitioning** | Storage / Ingestion | Partitioned S3 paths (`year/month/day`) registered via Glue Catalog | Enables **Partition Pruning** in Athena, slashing query scan sizes and cloud costs by up to 90%. |
-| **Stream-friendly NDJSON** | Ingestion Layer | Converted snapshot payloads to Newline Delimited JSON | Eliminates full-array JSON memory parsing overhead on Athena query workers. |
-| **Pushdown Deduplication** | Transformation (dbt) | Used `ROW_NUMBER() OVER (...)` CTEs in Staging models | Avoids costly row-level file rewriting on S3; pushes heavy dedup logic to Athena distributed SQL engine. |
-| **Analytical Pre-aggregation** | Data Modeling | Materialized TF-IDF scores into dedicated fact tables (`fact_movie_keyword_tfidf`) | Eliminates heavy multi-pass string aggregations on runtime dashboard queries. |
-| **Normalized Bridge Tables** | Data Modeling | Split M:N relationships into surrogate-keyed bridge tables | Avoids high-latency `CROSS JOIN UNNEST()` operations over complex nested JSON arrays in Athena. |
-| **OS Memory Swap Tuning** | Orchestration | Provisioned 4GB swap space on host EC2 | Prevents Linux OOM Killer terminations during Airflow scheduler/webserver memory spikes. |
+![AWS](https://img.shields.io/badge/AWS-S3%20%7C%20Lambda%20%7C%20SQS%20%7C%20Athena%20%7C%20EC2-232F3E?logo=amazon-aws)
+![Apache Airflow](https://img.shields.io/badge/Orchestration-Apache%20Airflow-017CEE?logo=apache-airflow)
+![dbt](https://img.shields.io/badge/Transformation-dbt--core-FF694B?logo=dbt)
+![Docker](https://img.shields.io/badge/Container-Docker-2496ED?logo=docker)
+![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF?logo=github-actions)
