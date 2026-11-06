@@ -1,0 +1,36 @@
+name: Deploy Airflow Pipeline On AWS EC2
+
+on:
+  push:
+    branches:
+      - main 
+    paths:
+      - 'airflow/**'
+      - 'data_transformation_dbt/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_AIRFLOW_SERVER_HOST }}
+          username: ${{ secrets.EC2_AIRFLOW_SERVER_USER }}
+          key: ${{ secrets.EC2_AIRFLOW_SERVER_SSH_KEY }}
+          port: ${{ secrets.EC2_AIRFLOW_SERVER_PORT }}
+          script: |
+            cd ~/movie-data-pipeline
+
+            # 2. ดึงโค้ดล่าสุดจาก Git
+            git pull origin main
+
+            # 3. เข้าโฟลเดอร์ airflow เพื่อสั่งอัปเดตระบบ
+            cd airflow
+
+            # 4. สั่ง build ใหม่เฉพาะกรณีที่มีการแก้ Dockerfile และสั่ง restart แบบ zero downtime สั้นๆ
+            docker compose up -d --build
