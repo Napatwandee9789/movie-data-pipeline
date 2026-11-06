@@ -8,7 +8,7 @@
 
 ## Table of Contents
 
-- [🇹🇭 Thai Version](#thai-version)
+- [🇹🇭 Thai Version](#th-version)
   - [1. ที่มาและเป้าหมาย](#1-ที่มาและเป้าหมาย-motivation--objective)
   - [2. แผนภาพสถาปัตยกรรมระบบ](#2-แผนภาพสถาปัตยกรรมระบบ-architecture-flow)
   - [3. ปัญหาทางเทคนิคและการตัดสินใจเชิงวิศวกรรม](#3-ปัญหาทางเทคนิคและการตัดสินใจเชิงวิศวกรรม-technical-challenges--trade-offs)
@@ -18,7 +18,7 @@
   - [7. โครงสร้างโปรเจกต์](#7-โครงสร้างโปรเจกต์-repository-structure)
   - [8. วิธีการติดตั้งและรันระบบ](#8-วิธีการติดตั้งและรันระบบ-setup--configuration)
 
-- [en English Version](#english-version)
+- [en English Version](#en-version)
   - [1. Motivation & Objectives](#1-motivation--objectives)
   - [2. System Architecture Flow](#2-system-architecture-flow)
   - [3. Technical Challenges & Engineering Trade-offs](#3-technical-challenges--engineering-trade-offs)
