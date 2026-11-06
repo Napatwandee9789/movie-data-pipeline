@@ -1,10 +1,12 @@
-# TMDB End-to-End Data Lakehouse & Automated Orchestration
+# End-to-End Movie Data Lakehouse & Automated Orchestration | Souce: TMDB
 
 ![AWS](https://img.shields.io/badge/AWS-S3%20%7C%20Lambda%20%7C%20SQS%20%7C%20Athena%20%7C%20Glue%20%7C%20EC2-232F3E?logo=amazon-aws)
 ![Apache Airflow](https://img.shields.io/badge/Orchestration-Apache%20Airflow-017CEE?logo=apache-airflow)
 ![dbt](https://img.shields.io/badge/Transformation-dbt--core-FF694B?logo=dbt)
 ![Docker](https://img.shields.io/badge/Container-Docker-2496ED?logo=docker)
 ![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF?logo=github-actions)
+
+## TH-Version
 
 ระบบ Data Lakehouse แบบ Event-Driven ELT Pipeline บนสถาปัตยกรรม Serverless และ Container ดึงข้อมูลภาพยนตร์จาก TMDB API จัดเก็บลง AWS S3 แปลงข้อมูลสู่ Dimensional Model (Star Schema) บน AWS Athena ด้วย dbt Core ควบคุมการทำงานอัตโนมัติด้วย Apache Airflow บน AWS EC2 พร้อมระบบ Continuous Deployment (CD) ผ่าน GitHub Actions
 
@@ -31,7 +33,7 @@
   ├─ 1. invoke_snapshot_lambda ──> [AWS Lambda: Snapshot]
   │                                       │ (TMDB Discover API: แบ่งช่วง 0-14 และ 15-30 วัน)
   │                                       ▼
-  │                                [S3: raw/movie_daily_snapshot/...] (NDJSON เท่านั้น)
+  │                                [S3: raw/movie_daily_snapshot/...] (รูปแบบ NDJSON เท่านั้น)
   │
   ├─ 2. invoke_producer_lambda ──> [AWS Lambda: Producer]
   │                                       │ (TMDB Changes API: /movie/changes)
@@ -48,7 +50,7 @@
   │
   └─ 4. trigger_dbt_daily_models ──> [dbt-athena บน Airflow/EC2]
                                            │
-                                           ▼ (Dimensional Modeling: Staging -> Marts)
+                                           ▼ (Dimensional Modeling: Staging -> Intermediate -> Marts)
                                     [AWS Athena + AWS Glue Catalog]
                                            │
                                            ▼
@@ -62,8 +64,8 @@
 | Engineering Challenge | The Bottleneck / Failure Mode | Architectural Solution | Trade-off & Mitigation |
 |---|---|---|---|
 | **500-Page API Limit** | Endpoint `/discover/movie` จำกัดการดึงสูงสุด 500 หน้า เสี่ยงเกิด Data Loss ช่วงที่มีภาพยนตร์เข้าฉายพร้อมกันจำนวนมาก | **Window Splitting Strategy:** ซอยช่วงเวลาค้นหาเป็น 2 กรอบ: `0–14 วัน` และ `15–30 วัน` แล้วนำมารวมกันและ Deduplicate ด้วย `movie_id` | **Trade-off:** เพิ่มจำนวน API Requests เล็กน้อย แต่การันตี Data Completeness 100% |
-| **Ingestion Bottleneck** | ข้อมูล Daily Changes มีหลายร้อยเรื่อง หากใช้ Worker ตัวเดียวดึงแบบ Sequential จะใช้เวลานานกว่า 30 นาที | **Producer-Consumer Pattern:** ใช้ AWS Lambda รวบรวม Movie IDs ส่งเข้า Amazon SQS เพื่อให้ Lambda Worker Pool ดึงข้อมูลแบบขนาน (Parallel) | **Trade-off:** มี Throughput เพิ่มขึ้นชั่วขณะ แต่ตัดเวลา Ingestion ให้เสร็จสิ้นภายในไม่กี่นาที |
-| **Barrier Synchronization** | Lambda Workers รันแบบ Async กระจายตัวอิสระ ทำให้ Airflow ไม่ทราบเวลาที่การประมวลผลเสร็จสิ้นแน่นอน | **7-Minute Synchronization Delay:** กำหนด Static Delay 7 นาทีใน Airflow (อิงจากเวลาทำงานปกติไม่เกิน 5 นาที + เผื่อ Safety Buffer 2 นาที) | **Trade-off:** ต้องหน่วงเวลารอ 2 นาที แต่ตัดความเสี่ยง Partial Data Loading ก่อนเริ่ม dbt |
+| **Ingestion Bottleneck** | ข้อมูล Daily Changes มีหลายหลักหลายพัน หากใช้ Worker ตัวเดียวดึงแบบ Sequential จะใช้เวลานานกว่า 30 นาที | **Producer-Consumer Pattern:** ใช้ AWS Lambda รวบรวม Movie IDs ส่งเข้า Amazon SQS เพื่อให้ Lambda Worker Pool ดึงข้อมูลแบบขนาน (Parallel) | **Trade-off:** มี Throughput เพิ่มขึ้นชั่วขณะ แต่ตัดเวลา Ingestion ให้เสร็จสิ้นภายในไม่กี่นาที |
+| **Barrier Synchronization** | Lambda Workers รันแบบ Async กระจายตัวอิสระ ทำให้ Airflow ไม่ทราบเวลาที่การประมวลผลเสร็จสิ้นแน่นอน | **7-Minute Synchronization Delay:** กำหนด Static Delay 7 นาทีใน Airflow (อ้างอิงจากเวลาทำงานปกติไม่เกิน 5 นาที + เผื่อ Safety Buffer 2 นาที) | **Trade-off:** ต้องหน่วงเวลารอ 2 นาที แต่ตัดความเสี่ยง Partial Data Loading ก่อนเริ่ม dbt |
 | **Server Memory Spikes** | Docker Compose บน EC2 รัน Airflow เจอ OOM (Out-of-Memory) จน OS สั่งปิดโปรเซส | **OS Swap Memory Tuning:** จัดสรร 4GB Swap Space บน Ubuntu Host เพื่อรับโหลดพีกชั่วขณะ | **Trade-off:** ดิสก์ I/O ช้ากว่า RAM แต่ระบบเสถียร 100% โดยไม่ต้องจ่ายค่าเครื่องแพงขึ้น |
 
 ---
@@ -104,9 +106,9 @@
 ## 6. การนำส่งโค้ดอัตโนมัติ (CI/CD Workflows)
 
 ทำงานผ่าน **GitHub Actions** แยกตาม Path Filters:
-* `deploy-lambda-snapshot.yml`: บิลด์ Docker Image ขึ้น ECR และอัปเดตฟังก์ชัน Snapshot Lambda
-* `deploy-lambda-producer.yml`: บิลด์ Docker Image ขึ้น ECR และอัปเดตฟังก์ชัน Producer Lambda
-* `deploy-lambda-worker.yml`: บิลด์ Docker Image ขึ้น ECR และอัปเดตฟังก์ชัน Worker Lambda
+* `deploy-lambda-snapshot.yml`: สร้าง Docker Image ขึ้น ECR และอัปเดตฟังก์ชัน Snapshot Lambda
+* `deploy-lambda-producer.yml`: สร้าง Docker Image ขึ้น ECR และอัปเดตฟังก์ชัน Producer Lambda
+* `deploy-lambda-worker.yml`: สร้าง Docker Image ขึ้น ECR และอัปเดตฟังก์ชัน Worker Lambda
 * `deploy-airflow-server.yml`: เชื่อมต่อผ่าน SSH ไปยัง EC2 เพื่อสั่ง `git pull` และ `docker compose up -d --build` เมื่อโค้ดฝั่ง Airflow หรือ dbt มีการแก้ไข
 
 ---
@@ -127,7 +129,7 @@
 │   └── .env.example
 ├── data_transformation_dbt/
 │   ├── models/
-│   │   ├── staging/        # คลีนข้อมูลและ Cast Data Types
+│   │   ├── staging/        # ทำความสะอาดข้อมูลและ Cast Data Types
 │   │   ├── intermediate/   # คำนวณตัวเลขการเงิน (Profit, ROI)
 │   │   └── marts/
 │   │       ├── dimensions/ # ตารางมิติพร้อม Surrogate Keys
@@ -196,17 +198,50 @@
      # กำหนด AIRFLOW_UID=50000 และตั้งค่าการเชื่อมต่อ AWS / Athena
      ```
 
-### 4. การรันระบบ (Execution)
-* **รัน Orchestration บน EC2:**
-  ```bash
-  cd airflow
-  docker compose up -d --build
-  ```
-  เข้าใช้งาน Airflow Web UI ได้ที่ `http://<EC2_IP>:8088` แล้วสั่ง Trigger DAG `movie_data_pipeline_orchestration`
-* **รัน dbt Models แบบ Manual (ถ้าต้องการ):**
-  ```bash
-  cd data_transformation_dbt
-  dbt deps
-  dbt run
-  dbt test
-  ```
+## 4. การรันระบบ (Execution)
+
+### 4.1 การเตรียมข้อมูลย้อนหลัง (Initial Historical Backfill - Optional)
+
+หากต้องการโหลดข้อมูลภาพยนตร์ย้อนหลัง 10 ปี (2016–ปัจจุบัน) เพื่อสร้างชุดข้อมูลเริ่มต้นสำหรับการวิเคราะห์ภาพรวมในระยะยาว สามารถรันสคริปต์เพื่อดึงข้อมูลจาก TMDB API และบันทึกลง Amazon S3 ได้โดยตรง
+
+\```bash
+# ติดตั้ง Dependencies และรันสคริปต์ผ่าน uv
+uv run python scripts/backfill_historical_data.py
+\```
+
+> **หมายเหตุ:** ขั้นตอนนี้เป็นทางเลือก สามารถข้ามได้หากไม่ต้องการโหลดข้อมูลย้อนหลัง
+
+### 4.2 เริ่มต้นระบบ Orchestration บน EC2
+
+เข้าไปยังโฟลเดอร์ `airflow` และรัน Docker Compose เพื่อเริ่มต้นบริการ Apache Airflow
+
+\```bash
+cd airflow
+
+# Build และเริ่มต้น Containers ใน Background
+docker compose up -d --build
+\```
+
+เมื่อระบบเริ่มทำงานแล้ว สามารถเข้าใช้งาน Airflow Web UI ผ่าน Browser ได้ที่:
+
+- **URL:** `http://<EC2_IP>:8088`
+- **DAG ID:** `movie_data_pipeline_orchestration`
+
+### 4.3 การรัน dbt Models แบบ Manual (Optional)
+
+หากต้องการสั่งรันกระบวนการ Data Transformation ผ่าน dbt Core ด้วยตนเอง สามารถใช้คำสั่งต่อไปนี้จากโฟลเดอร์ `data_transformation_dbt`
+
+\```bash
+cd data_transformation_dbt
+
+# ติดตั้ง dbt Packages
+dbt deps
+
+# รัน Data Transformation Models
+dbt run
+
+# ตรวจสอบคุณภาพข้อมูลด้วย Tests
+dbt test
+\```
+
+> **หมายเหตุ:** ขั้นตอนนี้เป็นทางเลือก โดยปกติ dbt จะถูกเรียกใช้งานผ่าน Apache Airflow ตามลำดับของ Pipeline ที่กำหนดไว้
