@@ -99,7 +99,7 @@
 | **Hive-style Partitioning** | Storage (S3) | จัดโครงสร้าง Path เป็น `year=.../month=.../day=...` ใน Glue Catalog | **ลด Data Scanned > 90%** ใน Athena เพราะอ่านเฉพาะโฟลเดอร์ของวันนั้น ข้ามข้อมูลเก่าทั้งหมด |
 | **Strict NDJSON Ingestion** | Ingestion | ข้อมูลดิบใน `raw/` เก็บเป็น Newline Delimited JSON (NDJSON) เท่านั้น | รองรับ **Line-by-Line Streaming** ขจัด Memory Overhead บน Athena Worker จากการโหลด Root JSON Array |
 | **Parallel Processing via SQS** | Ingestion | ใช้ SQS คั่นกลางระหว่าง Producer และ Worker เพื่อทำ Parallel Scaling | ลดระยะเวลา Ingestion จากเดิม **30+ นาที เหลือไม่กี่นาที** รองรับปริมาณงานที่เพิ่มขึ้นได้ยืดหยุ่น |
-| **Pre-unnested Bridges** | Data Modeling | แตก Nested Arrays (Cast, Crew, Companies, Genres) เป็น Bridge Tables ล่วงหน้า | ขจัดภาระ `CROSS JOIN UNNEST()` สดๆ ทำให้ Dashboard Query ตอบสนองในระดับ Milliseconds |
+| **Pre-unnested Bridges** | Data Modeling | แตก Nested Arrays (Cast, Crew, Companies, Genres) เป็น Bridge Tables ล่วงหน้า | ไม่มีภาระจากการ `CROSS JOIN UNNEST()` สด ๆ ทำให้ Dashboard Query ตอบสนองในระดับ Milliseconds |
 | **Incremental Merge** | Transformation (dbt) | ใช้กลยุทธ์ `incremental` ร่วมกับ `merge` ในโมเดลส่วนใหญ่ | ประมวลผลและเขียนเฉพาะ Delta Records ลดทั้งเวลาประมวลผลและค่าเขียนไฟล์บน S3 |
 | **Analytical Pre-computation** | Analytics | คำนวณ Smooth TF-IDF (8 ระดับมิติ) และ Materialize ลงตาราง Fact ล่วงหน้า | ลดภาระการคำนวณ Text Mining จากหลายนาทีบน BI ให้เรียกใช้งานได้ทันที |
 | **OS Memory Swap** | Orchestration | จัดสรร 4GB Swap Space บนโฮสต์ EC2 | ป้องกัน Linux OOM Killer ปิดการทำงานของ Airflow Scheduler/Worker ระหว่าง Memory Spikes |
