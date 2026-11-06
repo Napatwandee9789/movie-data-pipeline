@@ -11,10 +11,10 @@ wheels/
 uv
 # env files
 .env
-
+*.env
 # Logs
 *.log
 scripts/tmdb_backfill.log
 
 test.ipynb
-data_transformation_dbt/
+
