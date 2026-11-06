@@ -18,7 +18,7 @@
   - [7. โครงสร้างโปรเจกต์](#7-โครงสร้างโปรเจกต์-repository-structure)
   - [8. วิธีการติดตั้งและรันระบบ](#8-วิธีการติดตั้งและรันระบบ-setup--configuration)
 
-- [🇬🇧 English Version](#english-version)
+- [en English Version](#english-version)
   - [1. Motivation & Objectives](#1-motivation--objectives)
   - [2. System Architecture Flow](#2-system-architecture-flow)
   - [3. Technical Challenges & Engineering Trade-offs](#3-technical-challenges--engineering-trade-offs)
