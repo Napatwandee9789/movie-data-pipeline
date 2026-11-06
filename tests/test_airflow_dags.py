@@ -25,7 +25,7 @@ def test_dags_loaded(dagbag):
 def test_dag_cycle_check(dagbag):
     """Ensure DAGs do not contain cyclic dependencies (deadlocks)."""
     for dag_id, dag in dagbag.dags.items():
-        # test_cycle() will raise an AirflowDagCycleException if a loop is detected.
+        # test_cycle() will raise an AirflowDagCycleException if a loop is detected
         dag.test_cycle()
 
 
