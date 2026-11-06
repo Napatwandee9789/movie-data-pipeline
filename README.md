@@ -245,3 +245,447 @@ dbt test
 \```
 
 > **หมายเหตุ:** ขั้นตอนนี้เป็นทางเลือก โดยปกติ dbt จะถูกเรียกใช้งานผ่าน Apache Airflow ตามลำดับของ Pipeline ที่กำหนดไว้
+
+
+## EN-Version
+
+## Overview
+
+An event-driven ELT Data Lakehouse built on a combination of serverless
+and container-based AWS services. The pipeline ingests movie data from
+the TMDB API, stores raw data in Amazon S3, and transforms it into a
+dimensional model (Star Schema) using dbt Core and Amazon Athena. Apache
+Airflow, hosted on AWS EC2, orchestrates the workflow, while GitHub
+Actions automates Continuous Deployment (CD).
+
+------------------------------------------------------------------------
+
+## 1. Motivation & Objectives
+
+This project implements an automated Data Lakehouse using an
+event-driven architecture and an ELT pipeline to ingest, transform, and
+model movie data from the TMDB API. The resulting data supports analysis
+across three key areas:
+
+-   **Financial ROI Analysis:** Evaluating the financial performance and
+    return on investment of movies.
+-   **30-Day Theatrical Trajectory:** Tracking changes in movie
+    popularity during the first 30 days after release.
+-   **TF-IDF Keyword Analysis:** Identifying prominent content-related
+    themes through keyword-level TF-IDF calculations.
+
+The system follows a **Decoupled Storage & Compute** approach on AWS.
+Amazon S3 provides data storage, AWS Glue Data Catalog manages metadata,
+Amazon Athena handles data querying, and dbt Core performs
+transformations and data modeling. Apache Airflow orchestrates the
+pipeline, while GitHub Actions automates Continuous Deployment (CD).
+
+### Business Problem
+
+Investment in the film industry involves substantial risk. Decisions
+about financing or developing film projects should therefore be
+supported by more than intuition or a movie's final gross revenue alone.
+Several areas can be explored through data to support better-informed
+decisions:
+
+-   **Popularity Trends:** There is a need for a way to monitor and
+    compare movie popularity during the first 30 days after release,
+    providing insight into audience interest during a critical period of
+    theatrical performance.
+-   **Movie Content Themes:** There is limited visibility into which
+    themes and keywords are prominent or frequently used across
+    different years, genres, and countries. Analyzing these patterns may
+    help producers identify content trends and explore opportunities to
+    develop stories that stand out in the market.
+
+### Engineering Objectives
+
+Design and implement a stable, scalable Lakehouse Architecture with
+appropriate control over cloud processing costs. The system uses a
+**Decoupled Storage & Compute** architecture to separate data storage
+from data processing, alongside an automated ELT pipeline orchestrated
+by Apache Airflow and GitHub Actions.
+
+The goal is to produce **analytics-ready data** for BI dashboards that
+support financial performance analysis, movie popularity tracking, and
+the discovery of prominent content themes that may inspire the
+development of future film projects.
+
+------------------------------------------------------------------------
+
+## 2. System Architecture Flow
+
+``` text
+[Airflow DAG: movie_data_pipeline_orchestration]
+ │
+ ├─ 1. invoke_snapshot_lambda ──> [AWS Lambda: Snapshot]
+ │                                       │ (TMDB Discover API: split into 0–14 and 15–30 day windows)
+ │                                       ▼
+ │                                [S3: raw/movie_daily_snapshot/...] (NDJSON only)
+ │
+ ├─ 2. invoke_producer_lambda ──> [AWS Lambda: Producer]
+ │                                       │ (TMDB Changes API: /movie/changes)
+ │                                       ▼
+ │                                [Amazon SQS Queue (Task Distribution Buffer)]
+ │                                       │
+ │                                       ▼ (Concurrency Scaling)
+ │                                [AWS Lambda: Worker Pool]
+ │                                       │ (TMDB Detail API: /movie/{id})
+ │                                       ▼
+ │                                [S3: raw/movie_daily_changes/...] (NDJSON only)
+ │
+ ├─ 3. wait_for_workers_completion (7-minute delay to allow Workers to finish processing)
+ │
+ └─ 4. trigger_dbt_daily_models ──> [dbt-athena on Airflow/EC2]
+                                          │
+                                          ▼ (Dimensional Modeling: Staging -> Intermediate -> Marts)
+                                   [AWS Athena + AWS Glue Catalog]
+                                          │
+                                          ▼
+                                   [S3 Target Storage: gold/ (Parquet / Marts)]
+```
+
+------------------------------------------------------------------------
+
+## 3. Technical Challenges & Engineering Trade-offs
+
+  --------------------------------------------------------------------------------
+  Engineering         Bottleneck /        Architectural Solution Trade-off &
+  Challenge           Failure Mode                               Mitigation
+  ------------------- ------------------- ---------------------- -----------------
+  **500-Page API      The                 **Window Splitting     **Trade-off:**
+  Limit**             `/discover/movie`   Strategy:** Divide the Slightly
+                      endpoint has a      search period into two increases the
+                      maximum retrieval   windows: `0–14 days`   number of API
+                      limit of 500 pages, and `15–30 days`.      requests while
+                      creating a risk of  Combine the results    aiming to improve
+                      data loss during    and deduplicate them   data
+                      periods with a high using `movie_id`.      completeness.
+                      volume of movie                            
+                      releases.                                  
+
+  **Ingestion         Daily Changes may   **Producer--Consumer   **Trade-off:**
+  Bottleneck**        contain several     Pattern:** An AWS      Introduces
+                      thousand movie IDs. Lambda Producer        temporary
+                      Fetching details    collects movie IDs and throughput
+                      sequentially with a sends them to Amazon   spikes, while
+                      single worker can   SQS. A Lambda Worker   reducing
+                      take more than 30   Pool then retrieves    ingestion time to
+                      minutes.            movie details in       a few minutes.
+                                          parallel.              
+
+  **Barrier           Lambda Workers      **7-Minute             **Trade-off:**
+  Synchronization**   execute             Synchronization        Adds waiting
+                      asynchronously and  Delay:** Configure a   time, but reduces
+                      independently, so   static 7-minute delay  the risk of dbt
+                      Airflow does not    in Airflow, based on a starting before
+                      inherently know     typical processing     ingestion has
+                      when all processing time of no more than 5 finished.
+                      has completed.      minutes plus a         
+                                          2-minute safety        
+                                          buffer.                
+
+  **Server Memory     Airflow running     **OS Swap Memory       **Trade-off:**
+  Spikes**            through Docker      Tuning:** Allocate 4   Disk I/O is
+                      Compose on EC2      GB of swap space on    slower than RAM,
+                      experienced         the Ubuntu host to     but swap provides
+                      out-of-memory (OOM) absorb temporary       additional memory
+                      events, causing the memory spikes.         headroom without
+                      operating system to                        upgrading to a
+                      terminate                                  more expensive
+                      processes.                                 instance.
+  --------------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## 4. ELT Optimization Matrix
+
+  --------------------------------------------------------------------------------------------
+  Optimization        Layer             Implementation Details         Quantitative /
+  Technique                                                            Technical Impact
+  ------------------- ----------------- ------------------------------ -----------------------
+  **Hive-Style        Storage (S3)      Organize S3 paths using        Can reduce Athena data
+  Partitioning**                        `year=.../month=.../day=...`   scanned by **more than
+                                        and register the partitions in 90%** for date-filtered
+                                        Glue Catalog.                  queries when only the
+                                                                       relevant daily
+                                                                       partitions need to be
+                                                                       read.
+
+  **Strict NDJSON     Ingestion         Store raw data under `raw/`    Supports
+  Ingestion**                           exclusively in Newline         record-by-record JSON
+                                        Delimited JSON (NDJSON)        processing and avoids
+                                        format.                        the memory overhead
+                                                                       associated with parsing
+                                                                       a single root JSON
+                                                                       array.
+
+  **Parallel          Ingestion         Use SQS as a buffer between    Reduces ingestion time
+  Processing via                        the Producer and Workers to    from **30+ minutes to a
+  SQS**                                 enable parallel processing.    few minutes**, while
+                                                                       allowing the workload
+                                                                       to scale more flexibly.
+
+  **Pre-unnested      Data Modeling     Extract nested arrays (Cast,   Avoids repeatedly
+  Bridge Tables**                       Crew, Companies, and Genres)   executing
+                                        into bridge tables ahead of    `CROSS JOIN UNNEST()`
+                                        analytical queries.            at query time and can
+                                                                       improve dashboard query
+                                                                       performance.
+
+  **Incremental       Transformation    Use dbt `incremental`          Processes and writes
+  Merge**             (dbt)             materialization with the       only delta records,
+                                        `merge` strategy for most      reducing transformation
+                                        models.                        time and the amount of
+                                                                       data written to S3.
+
+  **Analytical        Analytics         Calculate Smooth TF-IDF across Moves text-mining
+  Pre-computation**                     eight analytical dimensions    computation out of BI
+                                        and materialize the results in queries, allowing
+                                        advance.                       dashboards to retrieve
+                                                                       precomputed results
+                                                                       directly.
+
+  **OS Memory Swap**  Orchestration     Allocate 4 GB of swap space on Provides additional
+                                        the EC2 host.                  memory headroom and
+                                                                       helps reduce the risk
+                                                                       of the Linux OOM Killer
+                                                                       terminating Airflow
+                                                                       Scheduler or Worker
+                                                                       processes during memory
+                                                                       spikes.
+  --------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## 5. Dimensional Data Model (Marts)
+
+The data architecture follows **Dimensional Modeling (Star Schema)**
+principles and is implemented using `dbt-athena`.
+
+  ------------------------------------------------------------------------------------------------------
+  Table Name                           Layer Type        Grain             Key Columns & Highlights
+  ------------------------------------ ----------------- ----------------- -----------------------------
+  `dim_movies`                         Dimension         One row per movie Surrogate Key
+                                                                           (`movie_sur_id`), financial
+                                                                           metrics (Profit, ROI, Revenue
+                                                                           Multiplier).
+
+  `dim_persons`                        Dimension         One row per       Surrogate Key
+                                                         person (cast or   (`person_sur_id`), with logic
+                                                         crew)             to select the best available
+                                                                           profile image.
+
+  `dim_companies`                      Dimension         One row per       Surrogate Key
+                                                         production        (`company_sur_id`), studio
+                                                         company or studio logo.
+
+  `dim_genres`                         Dimension         One row per movie Supports default fallback
+                                                         genre             records: `-1: None`,
+                                                                           `-2: Invalid`.
+
+  `dim_keywords`                       Dimension         One row per       Uses
+                                                         keyword           `merge_update_columns = []`
+                                                                           to implement insert-only
+                                                                           behavior.
+
+  `dim_dates`                          Dimension         One row per       Programmatically generated
+                                                         calendar date     for 2016--2030 without
+                                                                           relying on an external CSV
+                                                                           file.
+
+  `dim_countries`                      Dimension         One row per       Uses ISO-3166-1 keys with
+                                                         country           default records `-1` and
+                                                                           `-2`.
+
+  `bridge_movie_*`                     Bridge (M:N)      One row per       Composite surrogate keys,
+                                                         relationship pair duplicate removal using
+                                                                           `UNION`, and insert-only
+                                                                           merge behavior.
+
+  `fact_movie_daily_engagement_100d`   Fact (Periodic    One movie per     **Partitioned by
+                                       Snapshot)         measurement date  `days_since_release`** to
+                                                                           support retention-curve
+                                                                           analysis.
+
+  `fact_movie_keyword_tfidf`           Fact (Analytical) One keyword per   **Partitioned by
+                                                         analytical slice  `aggregation_level`**; stores
+                                                                           precomputed Smooth TF-IDF
+                                                                           values across all eight
+                                                                           levels.
+  ------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## 6. Automated Deployment (CI/CD Workflows)
+
+GitHub Actions workflows are separated using path filters:
+
+-   `deploy-lambda-snapshot.yml`: Builds a Docker image, pushes it to
+    Amazon ECR, and updates the Snapshot Lambda function.
+-   `deploy-lambda-producer.yml`: Builds a Docker image, pushes it to
+    Amazon ECR, and updates the Producer Lambda function.
+-   `deploy-lambda-worker.yml`: Builds a Docker image, pushes it to
+    Amazon ECR, and updates the Worker Lambda function.
+-   `deploy-airflow-server.yml`: Connects to EC2 over SSH and runs
+    `git pull` followed by `docker compose up -d --build` when Airflow
+    or dbt code changes.
+
+------------------------------------------------------------------------
+
+## 7. Repository Structure
+
+``` text
+├── .github/workflows/
+│   ├── deploy-airflow-server.yml
+│   ├── deploy-lambda-producer.yml
+│   ├── deploy-lambda-snapshot.yml
+│   └── deploy-lambda-worker.yml
+├── airflow/
+│   ├── dags/
+│   │   └── movie_data_pipeline_orchestration.py
+│   ├── Dockerfile
+│   ├── docker-compose.yaml
+│   └── .env.example
+├── data_transformation_dbt/
+│   ├── models/
+│   │   ├── staging/        # Data cleaning and data type casting
+│   │   ├── intermediate/   # Financial metric calculations (Profit, ROI)
+│   │   └── marts/
+│   │       ├── dimensions/ # Dimension tables with surrogate keys
+│   │       ├── bridges/    # Bridge tables for M:N relationships
+│   │       └── facts/      # Fact tables for engagement and TF-IDF metrics
+│   ├── dbt_project.yml
+│   └── profiles.yml
+├── fetcher_for_daily_snapshot/
+│   ├── Dockerfile
+│   ├── lambda_snapshot.py
+│   └── requirements.txt
+├── producer_for_daily_changes/
+│   ├── Dockerfile
+│   ├── lambda_producer.py
+│   └── requirements.txt
+├── worker_for_daily_changes/
+│   ├── Dockerfile
+│   ├── lambda_worker.py
+│   └── requirements.txt
+├── scripts/
+│   └── backfill_historical_data.py
+├── pyproject.toml
+└── README.md
+```
+
+------------------------------------------------------------------------
+
+## 8. Setup & Configuration
+
+### 8.1 AWS Cloud Prerequisites
+
+-   **Amazon S3:** Create a bucket for the Data Lakehouse.
+    -   `raw/`: Stores raw data exclusively in **NDJSON (Newline
+        Delimited JSON)** format.
+    -   `gold/`: Stores final Marts tables in **Parquet** format.
+-   **Amazon ECR:** Create three repositories:
+    `fetcher_for_daily_snapshot`, `producer_for_daily_changes`, and
+    `worker_for_daily_changes`.
+-   **AWS Lambda:** Create three functions and configure each to use its
+    corresponding ECR image.
+-   **Amazon SQS:** Create one Standard Queue to buffer movie ID tasks.
+-   **AWS Glue & Amazon Athena:**
+    -   Create a **database schema in Glue Data Catalog** whose fields
+        and data types match the raw data in `raw/` on a 1:1 basis.
+    -   Create an **Athena Workgroup** for dbt-athena transformations.
+-   **AWS EC2:** Provision an Ubuntu Server with Docker and Docker
+    Compose installed, and configure 4 GB of swap space.
+
+### 8.2 AWS Lambda Environment Variables
+
+-   **Snapshot Lambda:**
+    -   `TMDB_API_KEY`: API key for retrieving data from TMDB.
+    -   `S3_BUCKET_NAME`: Destination S3 bucket name.
+-   **Producer Lambda:**
+    -   `TMDB_API_KEY`: API key for retrieving data from TMDB.
+    -   `SQS_QUEUE_URL`: Amazon SQS queue URL.
+-   **Worker Lambda:**
+    -   `TMDB_API_KEY`: API key for retrieving data from TMDB.
+    -   `S3_BUCKET_NAME`: Destination S3 bucket name.
+
+### 8.3 Security & CI/CD Credentials
+
+1.  **GitHub Secrets:** Add the following repository secrets under
+    **Settings → Secrets and variables → Actions**:
+    -   `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`,
+        `AWS_ACCOUNT_ID`
+    -   `EC2_AIRFLOW_SERVER_HOST`: Public IP address of the EC2
+        instance.
+    -   `EC2_AIRFLOW_SERVER_USER`: EC2 login user (for example,
+        `ubuntu`).
+    -   `EC2_AIRFLOW_SERVER_SSH_KEY`: Private key used to connect to EC2
+        over SSH.
+2.  **GitHub Deploy Keys:**
+    -   Add the EC2 machine's public key under **Repository → Settings →
+        Deploy keys** to allow the server to pull the repository using
+        `git pull`.
+3.  **Airflow Environment Configuration:**
+    -   Copy the example environment file and configure it in the
+        `airflow/` directory:
+
+    ``` bash
+    cd airflow
+    cp .env.example .env
+    # Set AIRFLOW_UID=50000 and configure AWS / Athena connections
+    ```
+
+### 8.4 Running the System
+
+#### 8.4.1 Initial Historical Backfill (Optional)
+
+To load approximately 10 years of historical movie data (2016--present)
+and create an initial dataset for long-term analysis, run the script to
+retrieve data from the TMDB API and write it directly to Amazon S3.
+
+``` bash
+# Install dependencies and run the script with uv
+uv run python scripts/backfill_historical_data.py
+```
+
+> **Note:** This step is optional and can be skipped if historical data
+> is not required.
+
+#### 8.4.2 Start the Orchestration Service on EC2
+
+Navigate to the `airflow` directory and use Docker Compose to start the
+Apache Airflow services.
+
+``` bash
+cd airflow
+
+# Build the images and start containers in the background
+docker compose up -d --build
+```
+
+Once the services are running, access the Airflow Web UI in a browser:
+
+-   **URL:** `http://<EC2_IP>:8088`
+-   **DAG ID:** `movie_data_pipeline_orchestration`
+
+#### 8.4.3 Run dbt Models Manually (Optional)
+
+To run the data transformation process manually with dbt Core, execute
+the following commands from the `data_transformation_dbt` directory:
+
+``` bash
+cd data_transformation_dbt
+
+# Install dbt packages
+dbt deps
+
+# Run data transformation models
+dbt run
+
+# Run data quality tests
+dbt test
+```
+
+> **Note:** This step is optional. Under normal operation, Apache
+> Airflow invokes dbt according to the pipeline execution sequence.
