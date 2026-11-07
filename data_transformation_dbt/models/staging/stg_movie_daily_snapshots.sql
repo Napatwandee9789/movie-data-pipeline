@@ -10,6 +10,8 @@ WITH source_data AS
         month,
         day
     FROM {{ source('movie_raw_lake', 'ext_raw_movie_daily_snapshot') }}
+    WHERE release_date IS NOT NULL
+    AND TRIM(release_date) != ''
 )
 
 SELECT * FROM source_data
