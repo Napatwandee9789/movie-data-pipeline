@@ -6,7 +6,6 @@ on:
       - main  # สั่งให้ทำงานอัตโนมัติทุกครั้งที่มีการ push ขึ้น branch main
     paths:
       - 'producer_for_daily_changes/**'
-      - 'data_transformation_dbt/**'
 
 jobs:
   deploy-producer:
