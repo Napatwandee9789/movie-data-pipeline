@@ -165,6 +165,7 @@ with DAG(
         task_id="trigger_dbt_daily_models",
         bash_command=(
             f"cd {DBT_PROJECT_DIR} && "
+            f"/opt/airflow/dbt_venv/bin/dbt deps --profiles-dir {DBT_PROFILES_DIR} && "
             f"/opt/airflow/dbt_venv/bin/dbt build --select tag:daily_run --profiles-dir {DBT_PROFILES_DIR}"
         ),
         # Treat non-zero exit code as fatal error to halt downstream conditional logic
@@ -185,6 +186,7 @@ with DAG(
         task_id="trigger_dbt_monthly_models",
         bash_command=(
             f"cd {DBT_PROJECT_DIR} && "
+            f"/opt/airflow/dbt_venv/bin/dbt deps --profiles-dir {DBT_PROFILES_DIR} && "
             f"/opt/airflow/dbt_venv/bin/dbt build --select tag:monthly_run --profiles-dir {DBT_PROFILES_DIR}"
         ),
         append_env=True,
