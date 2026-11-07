@@ -134,7 +134,7 @@ with DAG(
         function_name=PRODUCER_LAMBDA_NAME,
         # Synchronous invocation guarantees Airflow waits until all IDs are successfully queued to SQS
         invocation_type="RequestResponse",
-        aws_conn_id=AWS_CONN_ID,
+        aws_conn_id=None,
     )
 
     invoke_snapshot_lambda = LambdaInvokeFunctionOperator(
@@ -142,7 +142,7 @@ with DAG(
         function_name=SNAPSHOT_LAMBDA_NAME,
         # Snapshots execute atomically via single S3 put_object; safe to run concurrently with changes
         invocation_type="RequestResponse",
-        aws_conn_id=AWS_CONN_ID,
+        aws_conn_id=None,
     )
 
     # =======================================================================
