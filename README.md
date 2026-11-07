@@ -589,3 +589,38 @@ dbt test
 > Airflow invokes dbt according to the pipeline execution sequence.
 
 ---
+
+
+```mermaid:
+graph LR
+    subgraph EC2["AWS EC2 Host"]
+        AF["Apache Airflow"]
+        DBT["dbt Core"]
+    end
+
+    subgraph AWS_Ingestion["Serverless Ingestion Layer"]
+        L_SNAP["Lambda: Snapshot"]
+        L_PROD["Lambda: Producer"]
+        QUEUE[("Amazon SQS")]
+        L_WORK["Lambda: Worker Pool"]
+    end
+
+    subgraph S3_Raw["Amazon S3 (Data Lake)"]
+        RAW_SNAP[("raw/daily_snapshot<br/>(NDJSON)")]
+        RAW_CHANGE[("raw/daily_changes<br/>(NDJSON)")]
+    end
+
+    subgraph Analytics["Lakehouse & Marts"]
+        ATHENA["AWS Athena"]
+        GLUE["AWS Glue Catalog"]
+        GOLD[("S3: gold/<br/>(Parquet Marts)")]
+    end
+
+    AF -->|1. Invoke| L_SNAP --> RAW_SNAP
+    AF -->|2. Invoke| L_PROD --> QUEUE --> L_WORK --> RAW_CHANGE
+    AF -.->|3. Wait 7 Mins| DBT
+    DBT --> ATHENA
+    ATHENA --- GLUE
+    RAW_SNAP & RAW_CHANGE --> ATHENA
+    ATHENA -->|Write Marts| GOLD
+```
