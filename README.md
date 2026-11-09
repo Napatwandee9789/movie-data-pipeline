@@ -360,35 +360,58 @@ development of future film projects.
 
 ## 2. System Architecture Flow
 
-``` text
-[Airflow DAG: movie_data_pipeline_orchestration]
- │
- ├─ 1. invoke_snapshot_lambda ──> [AWS Lambda: Snapshot]
- │                                       │ (TMDB Discover API: split into 0–14 and 15–30 day windows)
- │                                       ▼
- │                                [S3: raw/movie_daily_snapshot/...] (NDJSON only)
- │
- ├─ 2. invoke_producer_lambda ──> [AWS Lambda: Producer]
- │                                       │ (TMDB Changes API: /movie/changes)
- │                                       ▼
- │                                [Amazon SQS Queue (Task Distribution Buffer)]
- │                                       │
- │                                       ▼ (Concurrency Scaling)
- │                                [AWS Lambda: Worker Pool]
- │                                       │ (TMDB Detail API: /movie/{id})
- │                                       ▼
- │                                [S3: raw/movie_daily_changes/...] (NDJSON only)
- │
- ├─ 3. wait_for_workers_completion (7-minute delay to allow Workers to finish processing)
- │
- └─ 4. trigger_dbt_daily_models ──> [dbt-athena on Airflow/EC2]
-                                          │
-                                          ▼ (Dimensional Modeling: Staging -> Intermediate -> Marts)
-                                   [AWS Athena + AWS Glue Catalog]
-                                          │
-                                          ▼
-                                   [S3 Target Storage: gold/ (Parquet / Marts)]
-```
+<img width="1920" height="1080" alt="DAG (4)" src="https://github.com/user-attachments/assets/9ed79be0-e597-45f7-9e03-d0d4c8a5b6e1" />
+
+This Data Pipeline is orchestrated and managed end-to-end by **Apache Airflow [B]**, deployed and running inside a Docker container on an **AWS EC2 [A]** instance. It serves as the primary Workflow Orchestrator responsible for scheduling, managing task dependencies, integrating serverless ingestion workflows, and triggering dbt Core transformations to populate the Data Lakehouse.
+
+### Task 1: invoke_producer_lambda
+- **Apache Airflow [B]** on **AWS EC2 [A]** triggers the **AWS Lambda (Producer) [C]** function to kick off the ingestion pipeline.
+- **AWS Lambda (Producer) [C]** queries the TMDB API to fetch the list of daily changed Movie IDs.
+- The IDs are batched and dispatched into an **AWS Simple Queue Service (SQS) [D]** queue, which acts as a buffer and enforces concurrency limits to stay within the API's rate limits.
+- **AWS Lambda (Workers) [E]** instances are triggered by the **SQS [D]** queue to fetch granular movie details (such as genres, runtime, release date) concurrently, preventing individual workers from being overloaded.
+- **AWS Lambda (Workers) [E]** write raw payloads as JSON files into **Amazon S3 (Raw Zone) [G]**.
+
+### Task 2: wait_for_workers_completion
+- Introduces a 7-minute delay to allow **AWS Lambda (Workers) [E]** sufficient time to consume the queue and complete ingestion.
+- While workers typically finish within 5 minutes, a 2-minute buffer is added to accommodate days with higher-than-average movie updates.
+- Ensures all movie details are fully retrieved from the API and that all raw JSON files are committed to **Amazon S3 (Raw Zone) [G]**.
+- Acts as a synchronization barrier joined with Task 3, ensuring both Movie Details and Daily Snapshots are written before downstream dbt transformations begin.
+
+### Task 3: invoke_snapshot_lambda
+- Runs in parallel with Task 1.
+- **Apache Airflow [B]** triggers the **AWS Lambda [F]** function.
+- **AWS Lambda [F]** extracts daily audience engagement and popularity metrics for movies released within the past 30 days (such as popularity, vote count, vote average) directly from the TMDB API.
+- Stores raw data in NDJSON format directly into **Amazon S3 (Raw Zone) [G]**.
+
+### Task 4: trigger_dbt_daily_models
+- **Apache Airflow [B]** invokes the **dbt Core [K]** CLI within the container environment.
+- **dbt Core [K]** compiles SQL transformations and submits query jobs to **AWS Athena [I]** using the `dbt-athena-community` adapter.
+- **AWS Athena [I]** reads schema metadata and partition definitions from the **AWS Glue Data Catalog [H]** to query raw JSON files stored in **Amazon S3 (Raw Zone) [G]**.
+- Transforms and builds daily analytical datasets, including Dimension tables, Bridge tables (e.g., movie genres, cast/crew), and a 30-day rolling engagement fact table (`fact_movie_daily_engagement_30d`).
+- Exports transformed datasets in Apache Parquet format to **Amazon S3 (Gold Zone / Lakehouse) [J]**.
+
+### Task 5: evaluate_calendar_boundary
+- Acts as a Branching Operator evaluating whether the pipeline's execution date falls on the **first day of the month (1st of the month)**.
+- **If False (No):** Branches to `Task 6: skip_monthly_transformation` to conclude the daily run.
+- **If True (Yes):** Branches to `Task 7: trigger_dbt_monthly_models` to execute the scheduled monthly analytical models.
+
+### Task 6: skip_monthly_transformation
+- Implemented as a dummy step using Airflow's `EmptyOperator` for non-monthly runs.
+- Concludes the daily pipeline run immediately without triggering monthly models, avoiding unnecessary compute usage and lowering AWS Athena query costs.
+
+### Task 7: trigger_dbt_monthly_models
+- **Apache Airflow [B]** executes the **dbt Core [K]** monthly transformation models.
+- **dbt Core [K]** dispatches SQL instructions to **AWS Athena [I]** to rebuild the entire `fact_movie_keyword_tfidf` model from scratch (configured as a full-refresh via `materialized='table'`).
+- **AWS Athena [I]** calculates aggregated monthly metrics, such as cumulative popularity trends, performance indicators, and keyword-document matrices across the entire dataset.
+- Writes the resulting Parquet files into **Amazon S3 (Gold Zone / Lakehouse) [J]**.
+
+---
+
+> [!NOTE]
+> **Why is the `fact_movie_keyword_tfidf` model fully refreshed once per month?**
+> * **Statistical Properties of TF-IDF:** Computing term importance requires the Inverse Document Frequency (IDF) metric, which depends directly on the **total corpus size** ($N$, the total number of movies).
+> * **Data Accuracy:** As new titles are ingested daily throughout the month, global term rarity shifts. A monthly full rebuild ensures keyword weights reflect accurate statistical distributions across the entire corpus.
+> * **Cost & Performance Optimization:** Recomputing IDF weights across the entire catalog daily would result in excessive Athena query overhead without meaningful day-to-day shifts in score distributions. Running this heavy recalculation once per month strikes an optimal balance between freshness and cloud infrastructure costs.
 
 ---
 
