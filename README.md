@@ -49,6 +49,9 @@
 
 ## 2. แผนภาพสถาปัตยกรรมระบบ (Architecture Flow)
 
+<img width="1920" height="1080" alt="DAG (4)" src="https://github.com/user-attachments/assets/9ed79be0-e597-45f7-9e03-d0d4c8a5b6e1" />
+
+
  Data Pipeline นี้บริหารจัดการและควบคุมลำดับการทำงานทั้งหมดด้วย **Apache Airflow [B]** ซึ่งถูก Deploy และทำงานอยู่บน **AWS EC2 [A] ในรูปแบบ Docker Container โดยทำหน้าที่เป็น Workflow Orchestrator หลักในการตั้งเวลาการทำงาน จัดการ Dependencies เชื่อมโยงระบบ Serverless Ingestion และสั่งรัน dbt Core เพื่อประมวลผลข้อมูลลงสู่ Data Lakehouse
 
 ### Task 1: invoke_producer_lambda
