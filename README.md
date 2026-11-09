@@ -129,7 +129,20 @@
 
 ## 5. แบบจำลองข้อมูลระดับ Marts (Dimensional Data Model)
 
-สถาปัตยกรรมข้อมูลถูกออกแบบตามหลักการ **Dimensional Modeling (Star Schema)** ผ่าน `dbt-athena`:
+สถาปัตยกรรมข้อมูลถูกออกแบบตามหลักการ **Dimensional Modeling (Star Schema with Bridge Tables)** ผ่าน `dbt-athena` โดยอิงตามแนวคิดของ **Ralph Kimball** เพื่อรองรับการวิเคราะห์ข้อมูลภาพยนตร์เชิงลึกที่มีความสัมพันธ์แบบกลุ่มหลายค่า (Many-to-Many Relationships)
+
+### ทำไมต้องใช้ Bridge Tables ใน Data Warehouse?
+ตามธรรมชาติของข้อมูลภาพยนตร์ ภาพยนตร์ 1 เรื่องไม่ได้มีเพียงค่าเดียวในแต่ละมิติ เช่น มีได้หลายแนวภาพยนตร์ (Genres), ผลิตโดยหลายสตูดิโอ (Companies), มีนักแสดงและทีมงานหลายคน (Cast & Crew) พร้อมบทบาทที่ต่างกัน และมีหลายคีย์เวิร์ดบ่งบอกธีม (Keywords)
+
+หากออกแบบเป็น Star Schema แบบแบนราบ (Denormalization) โดยไม่ใช้ Bridge Table จะก่อให้เกิดปัญหาหลัก 2 ประการ:
+1. **Fact / Dimension Explosion:** เกิดแถวข้อมูลซ้ำซ้อนมหาศาล ทำให้ตารางบวม และเสี่ยงต่อการเกิดปัญหา Double Counting เมื่อรวมยอดสถิติ (Aggregations)
+2. **คิวรีวิเคราะห์ได้ยาก:** หากเก็บเป็น List หรือ String รวมในคอลัมน์เดียว จะทำให้เครื่องมือ BI และคำสั่ง SQL คิวรีจัดกลุ่ม (Group by / Filter) ข้ามมิติได้ช้าและไม่มีประสิทธิภาพ
+
+ระบบนี้จึงประยุกต์ใช้เทคนิค **[Multivalued Dimensions and Bridge Tables](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/multivalued-dimensions-bridge-tables/)** ตามมาตรฐานของ Kimball เพื่อรักษาความบริสุทธิ์ของ Grain ใน Dimension หลัก (`dim_movies`) และแยกความสัมพันธ์ Many-to-Many ออกมาเป็น Bridge Tables อย่างเป็นสัดส่วน
+
+---
+
+### โครงสร้างตารางใน Data Marts
 
 | Table Name | Layer Type | Grain (ระดับความละเอียดของข้อมูล) | Key Columns & Highlight Features |
 |---|---|---|---|
@@ -143,6 +156,8 @@
 | `bridge_movie_*` | Bridge (M:N) | 1 แถว ต่อ 1 คู่ความสัมพันธ์ | Composite Surrogate Keys, ตัดความซ้ำซ้อนด้วย `UNION`, Insert-only Merge |
 | `fact_movie_daily_engagement_100d` | Fact (Periodic) | 1 ภาพยนตร์ ต่อ 1 วันที่วัดผล | **Partitioned by `days_since_release`** รองรับ Retention Curve Analysis |
 | `fact_movie_keyword_tfidf` | Fact (Analytical) | 1 คำค้นหา ต่อ 1 Slice การวิเคราะห์ | **Partitioned by `aggregation_level`**, Materialize ค่า Smooth TF-IDF ครบทั้ง 8 ระดับ |
+
+> 📖 **Reference:** ศึกษาแนวคิดและเทคนิคการจัดการ Multivalued Dimensions เพิ่มเติมได้ที่: [Kimball Group - Multivalued Dimensions and Bridge Tables](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/multivalued-dimensions-bridge-tables/)
 
 ---
 
@@ -442,20 +457,37 @@ This Data Pipeline is orchestrated and managed end-to-end by **Apache Airflow [B
 
 ## 5. Dimensional Data Model (Marts)
 
-The data architecture follows **Dimensional Modeling (Star Schema)** principles and is implemented using `dbt-athena`.
+## 5. Marts Layer Data Modeling (Dimensional Data Model)
 
-| Table Name | Layer Type | Grain | Key Columns & Highlights |
+The data architecture is designed following the principles of **Dimensional Modeling (Star Schema with Bridge Tables)** implemented via `dbt-athena`, based on **Ralph Kimball's** methodology. This structure supports in-depth movie analytics characterized by complex multivalued, many-to-many relationships.
+
+### Why Use Bridge Tables in a Data Warehouse?
+By nature, a single movie does not map to a single value across its dimensions. For instance, a film typically spans multiple genres, is co-produced by multiple production companies/studios, features extensive casts and crews with distinct roles, and is tagged with multiple thematic keywords.
+
+Attempting to model this using a fully flattened Star Schema (denormalization) without Bridge Tables introduces two major challenges:
+1. **Fact / Dimension Explosion:** It causes massive row duplication, bloating table storage and introducing severe risks of double counting during metric aggregations.
+2. **Analytical & Query Inefficiency:** Storing multivalued attributes as arrays, lists, or delimited strings in a single column impairs SQL query performance and prevents BI tools from grouping, filtering, and joining across dimensions efficiently.
+
+To resolve this, the system implements the **[Multivalued Dimensions and Bridge Tables](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/multivalued-dimensions-bridge-tables/)** design pattern per Kimball standards. This preserves the grain integrity of the primary dimension (`dim_movies`) while cleanly decoupling many-to-many relationships into dedicated Bridge Tables.
+
+---
+
+### Data Mart Table Schema
+
+| Table Name | Layer Type | Grain (Level of Detail) | Key Columns & Highlight Features |
 |---|---|---|---|
-| `dim_movies` | Dimension | One row per movie | Surrogate Key (`movie_sur_id`), financial metrics (Profit, ROI, Revenue Multiplier). |
-| `dim_persons` | Dimension | One row per person (cast or crew) | Surrogate Key (`person_sur_id`), with logic to select the best available profile image. |
-| `dim_companies` | Dimension | One row per production company or studio | Surrogate Key (`company_sur_id`), studio logo. |
-| `dim_genres` | Dimension | One row per movie genre | Supports default fallback records: `-1: None`, `-2: Invalid`. |
-| `dim_keywords` | Dimension | One row per keyword | Uses `merge_update_columns = []` to implement insert-only behavior. |
-| `dim_dates` | Dimension | One row per calendar date | Programmatically generated for 2016–2030 without relying on an external CSV file. |
-| `dim_countries` | Dimension | One row per country | Uses ISO-3166-1 keys with default records `-1` and `-2`. |
-| `bridge_movie_*` | Bridge (M:N) | One row per relationship pair | Composite surrogate keys, duplicate removal using `UNION`, and insert-only merge behavior. |
-| `fact_movie_daily_engagement_100d` | Fact (Periodic Snapshot) | One movie per measurement date | **Partitioned by `days_since_release`** to support retention-curve analysis. |
-| `fact_movie_keyword_tfidf` | Fact (Analytical) | One keyword per analytical slice | **Partitioned by `aggregation_level`**; stores precomputed Smooth TF-IDF values across all eight levels. |
+| `dim_movies` | Dimension | 1 row per movie | Surrogate Key (`movie_sur_id`), financial metrics (Profit, ROI, Revenue Multiplier) |
+| `dim_persons` | Dimension | 1 row per individual (cast/crew) | Surrogate Key (`person_sur_id`), filtered for best-available profile image |
+| `dim_companies` | Dimension | 1 row per production company/studio | Surrogate Key (`company_sur_id`), studio logo metadata |
+| `dim_genres` | Dimension | 1 row per genre | Standardized fallback defaults: `-1: None`, `-2: Invalid` |
+| `dim_keywords` | Dimension | 1 row per keyword | Configured with `merge_update_columns = []` for an insert-only merge strategy |
+| `dim_dates` | Dimension | 1 row per calendar day | Programmatically generated range (2016–2030) without relying on external CSV dependencies |
+| `dim_countries` | Dimension | 1 row per country | ISO-3166-1 alpha-2 natural key with standard fallback defaults (`-1`, `-2`) |
+| `bridge_movie_*` | Bridge (M:N) | 1 row per relationship pair | Composite Surrogate Keys, deduplicated via `UNION`, insert-only merge behavior |
+| `fact_movie_daily_engagement_100d` | Fact (Periodic Snapshot) | 1 movie per measurement date | **Partitioned by `days_since_release`** to support post-release retention curve analysis |
+| `fact_movie_keyword_tfidf` | Fact (Analytical) | 1 keyword term per analytical slice | **Partitioned by `aggregation_level`**, materializing smoothed TF-IDF scores across all 8 aggregation levels |
+
+> 📖 **Reference:** Learn more about managing multivalued dimensions and bridge tables at [Kimball Group - Multivalued Dimensions and Bridge Tables](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/multivalued-dimensions-bridge-tables/).
 
 ---
 
