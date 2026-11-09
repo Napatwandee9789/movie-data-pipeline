@@ -140,7 +140,7 @@
 1. **Fact / Dimension Explosion:** เกิดแถวข้อมูลซ้ำซ้อนมหาศาล ทำให้ตารางบวม และเสี่ยงต่อการเกิดปัญหา Double Counting เมื่อรวมยอดสถิติ (Aggregations)
 2. **คิวรีวิเคราะห์ได้ยาก:** หากเก็บเป็น List หรือ String รวมในคอลัมน์เดียว จะทำให้เครื่องมือ BI และคำสั่ง SQL คิวรีจัดกลุ่ม (Group by / Filter) ข้ามมิติได้ช้าและไม่มีประสิทธิภาพ
 
-ระบบนี้จึงประยุกต์ใช้เทคนิค **[Multivalued Dimensions and Bridge Tables](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/multivalued-dimensions-bridge-tables/)** ตามมาตรฐานของ Kimball เพื่อรักษาความบริสุทธิ์ของ Grain ใน Dimension หลัก (`dim_movies`) และแยกความสัมพันธ์ Many-to-Many ออกมาเป็น Bridge Tables อย่างเป็นสัดส่วน
+ระบบนี้จึงประยุกต์ใช้เทคนิค **[Multivalued Dimensions and Bridge Tables](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/multivalued-dimension-bridge-table/)** ตามมาตรฐานของ Kimball เพื่อรักษาความบริสุทธิ์ของ Grain ใน Dimension หลัก (`dim_movies`) และแยกความสัมพันธ์ Many-to-Many ออกมาเป็น Bridge Tables อย่างเป็นสัดส่วน
 
 ---
 
@@ -159,7 +159,7 @@
 | `fact_movie_daily_engagement_100d` | Fact (Periodic) | 1 ภาพยนตร์ ต่อ 1 วันที่วัดผล | **Partitioned by `days_since_release`** รองรับ Retention Curve Analysis |
 | `fact_movie_keyword_tfidf` | Fact (Analytical) | 1 คำค้นหา ต่อ 1 Slice การวิเคราะห์ | **Partitioned by `aggregation_level`**, Materialize ค่า Smooth TF-IDF ครบทั้ง 8 ระดับ |
 
-> 📖 **Reference:** ศึกษาแนวคิดและเทคนิคการจัดการ Multivalued Dimensions เพิ่มเติมได้ที่: [Kimball Group - Multivalued Dimensions and Bridge Tables](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/multivalued-dimensions-bridge-tables/)
+> 📖 **Reference:** ศึกษาแนวคิดและเทคนิคการจัดการ Multivalued Dimensions เพิ่มเติมได้ที่: [Kimball Group - Multivalued Dimensions and Bridge Tables](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/multivalued-dimension-bridge-table/)
 
 ---
 
