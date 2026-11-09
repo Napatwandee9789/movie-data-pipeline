@@ -129,6 +129,8 @@
 
 ## 5. แบบจำลองข้อมูลระดับ Marts (Dimensional Data Model)
 
+<img width="2265" height="1503" alt="Untitled (29)" src="https://github.com/user-attachments/assets/016ae1eb-bc21-4766-a7d8-098471f2ab6e" />
+
 สถาปัตยกรรมข้อมูลถูกออกแบบตามหลักการ **Dimensional Modeling (Star Schema with Bridge Tables)** ผ่าน `dbt-athena` โดยอิงตามแนวคิดของ **Ralph Kimball** เพื่อรองรับการวิเคราะห์ข้อมูลภาพยนตร์เชิงลึกที่มีความสัมพันธ์แบบกลุ่มหลายค่า (Many-to-Many Relationships)
 
 ### ทำไมต้องใช้ Bridge Tables ใน Data Warehouse?
@@ -457,7 +459,8 @@ This Data Pipeline is orchestrated and managed end-to-end by **Apache Airflow [B
 
 ## 5. Dimensional Data Model (Marts)
 
-## 5. Marts Layer Data Modeling (Dimensional Data Model)
+<img width="2265" height="1503" alt="Untitled (29)" src="https://github.com/user-attachments/assets/016ae1eb-bc21-4766-a7d8-098471f2ab6e" />
+
 
 The data architecture is designed following the principles of **Dimensional Modeling (Star Schema with Bridge Tables)** implemented via `dbt-athena`, based on **Ralph Kimball's** methodology. This structure supports in-depth movie analytics characterized by complex multivalued, many-to-many relationships.
 
