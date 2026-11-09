@@ -49,36 +49,54 @@
 
 ## 2. แผนภาพสถาปัตยกรรมระบบ (Architecture Flow)
 
-```plaintext
-[Airflow DAG: movie_data_pipeline_orchestration]
-  │
-  ├─ 1. invoke_snapshot_lambda ──> [AWS Lambda: Snapshot]
-  │                                       │ (TMDB Discover API: แบ่งช่วง 0-14 และ 15-30 วัน)
-  │                                       ▼
-  │                                [S3: raw/movie_daily_snapshot/...] (รูปแบบ NDJSON เท่านั้น)
-  │
-  ├─ 2. invoke_producer_lambda ──> [AWS Lambda: Producer]
-  │                                       │ (TMDB Changes API: /movie/changes)
-  │                                       ▼
-  │                                [Amazon SQS Queue (Task Distribution Buffer)]
-  │                                       │
-  │                                       ▼ (Concurrency Scaling)
-  │                                [AWS Lambda: Worker Pool]
-  │                                       │ (TMDB Detail API: /movie/{id})
-  │                                       ▼
-  │                                [S3: raw/movie_daily_changes/...] (NDJSON เท่านั้น)
-  │
-  ├─ 3. wait_for_workers_completion (Time Delay 7 นาที เพื่อรอ Worker ประมวลผลครบ)
-  │
-  └─ 4. trigger_dbt_daily_models ──> [dbt-athena บน Airflow/EC2]
-                                           │
-                                           ▼ (Dimensional Modeling: Staging -> Intermediate -> Marts)
-                                    [AWS Athena + AWS Glue Catalog]
-                                           │
-                                           ▼
-                                    [S3 Target Storage: gold/ (Parquet / Marts)]
-```
+ Data Pipeline นี้บริหารจัดการและควบคุมลำดับการทำงานทั้งหมดด้วย Apache Airflow [B] ซึ่งถูก Deploy และทำงานอยู่บน AWS EC2 [A] ในรูปแบบ Docker Container โดยทำหน้าที่เป็น Workflow Orchestrator หลักในการตั้งเวลาการทำงาน จัดการ Dependencies เชื่อมโยงระบบ Serverless Ingestion และสั่งรัน dbt Core เพื่อประมวลผลข้อมูลลงสู่ Data Lakehouse
 
+### Task 1: invoke_producer_lambda
+* **Apache Airflow [B]** บน **AWS EC2 [A]** สั่งทริกเกอร์ **AWS Lambda (Producer) [C]** เพื่อเริ่มต้น Pipeline การนำเข้าข้อมูล
+* **AWS Lambda (Producer) [C]** ดึงรายการ Movie IDs ที่มีการอัปเดตรายวัน (Daily Changed Movie IDs) จาก TMDB API
+* แบ่งชุด IDs เป็น Batches แล้วส่งเข้าคิว **AWS Simple Queue Service (SQS) [D]** เพื่อทำหน้าที่เป็นบัฟเฟอร์และควบคุม Concurrency ไม่ให้เกิน Rate Limit ของ API 
+* **AWS Lambda (Workers) [E]** ถูกเรียกใช้งานจาก **SQS [D]** เพื่อดึงข้อมูล รายละเอียดเชิงลึกของภาพยนตร์ (Movie Details เช่น genres, runtime, release date) แบบคู่ขนาน เพื่อไม่ให้ worker ตัวเดียวทำงานหนักเกินไป
+* **AWS Lambda (Workers) [E]** บันทึกข้อมูลดิบรูปแบบ Raw JSON ลงใน **Amazon S3 (Raw Zone) [G]**
+
+### Task 2: wait_for_workers_completion
+* หยุดรอเวลาเป็นเวลา 7 นาที เพื่อเปิดช่วงเวลาให้ **AWS Lambda (Workers) [E]** ทยอยดึงงานจากคิวและประมวลผลข้อมูลจนเสร็จสมบูรณ์
+* โดยปกติ Workers จะใช้เวลาทำงานไม่เกิน 5 นาที แต่ตั้งหน่วงเวลาเผื่อไว้อีก 2 นาทีเพื่อรองรับวันที่มีจำนวนภาพยนตร์ที่มีการอัปเดตหรือเปลี่ยนแปลงมากกว่าปกติ
+* ช่วยให้มั่นใจว่ากระบวนการดึง Movie Details จาก API และการเขียนไฟล์ Raw JSON ทั้งหมดลง **Amazon S3 (Raw Zone) [G]** เสร็จสิ้นเรียบร้อย
+* ทำหน้าที่เป็นจุดรอข้อมูลให้พร้อมก่อนไปต่อ โดยรวมสายการทำงานเข้ากับ Task 3 เพื่อการันตีว่าข้อมูลดิบทั้ง Movie Details และ Daily Snapshots ถูกบันทึกครบถ้วน ก่อนเริ่มรัน dbt ในขั้นตอนถัดไป
+
+### Task 3: invoke_snapshot_lambda
+* ทำงานแบบคู่ขนาน (Parallel) พร้อมกับ Task 1
+* **Apache Airflow [B]** สั่งทริกเกอร์ **AWS Lambda [F]**
+* **AWS Lambda [F]** ดึงข้อมูลสถิติความนิยมและการมีส่วนร่วมจากผู้ชมของภาพยนตร์ที่เข้าฉายในช่วง 30 วันที่ผ่านมาแบบรายวัน (Daily Engagement Metrics เช่น popularity, vote count, vote average) จาก TMDB API
+* บันทึกข้อมูล Raw JSON รูปแบบ NDJSON ลงใน **Amazon S3 (Raw Zone) [G]** โดยตรง
+
+### Task 4: trigger_dbt_daily_models
+* **Apache Airflow [B]** สั่งรัน CLI ของ **dbt Core** [K] บนคอนเทนเนอร์
+* **dbt Core [K]** Compile โค้ด SQL และส่งคำสั่งผ่าน adapter dbt-athena-community ไปประมวลผลบน **AWS Athena [I]**
+* **AWS Athena [I]** อ้างอิง Metadata โครงสร้างตารางและ Partition จาก **AWS Glue Data Catalog** [H] เพื่อ Query อ่านไฟล์ Raw JSON จาก **Amazon S3 (Raw Zone) [G]**
+* ประมวลผลสร้างข้อมูลรายวัน ได้แก่ ตารางมิติ (Dimensions), ตารางเชื่อมโยง (Bridges เช่น ประเภทหนัง, นักแสดง) และตารางสถิติความนิยมและการมีส่วนร่วมจากผู้ชมของภาพยนตร์ที่เข้าฉายในช่วง 30 วันที่ผ่านมาแบบรายวัน (fact_movie_daily_engagement_30d)
+* บันทึกผลลัพธ์เป็นไฟล์ Parquet ลงใน **Amazon S3 (Gold Zone / Lakehouse) [J]**
+
+### Task 5: evaluate_calendar_boundary
+* ทำหน้าที่เป็น Branching Operator ตรวจสอบเงื่อนไขว่า Execution Date ของรอบนี้ตรงกับ วันแรกของเดือน (1st of month) หรือไม่
+* กรณีไม่ใช่ (No): ส่งต่อไปยัง Task 6: skip_monthly_transformation เพื่อจบการทำงานของ Pipeline ประจำวันทันที
+* กรณีใช่ (Yes): ส่งต่อไปยัง Task 7: trigger_dbt_monthly_models เพื่อประมวลผลรอบพิเศษประจำเดือน
+
+### Task 6: skip_monthly_transformation
+* ทำหน้าที่เป็น Dummy Task (ผ่าน EmptyOperator) สำหรับรองรับเส้นทางการทำงานกรณีที่ไม่ใช่วันแรกของเดือน
+* จบการทำงานของ Pipeline ประจำวันทันที โดยไม่สั่งรันโมเดลระดับเดือน เพื่อหลีกเลี่ยงการใช้ทรัพยากรและลดค่าใช้จ่ายในการคิวรีของ Athena โดยไม่จำเป็น
+
+### Task 7: trigger_dbt_monthly_models
+* **Apache Airflow [B]** สั่งรันคำสั่ง **dbt Core [K]** สำหรับโมเดลรายเดือน
+* dbt Core [K] ส่งคำสั่ง SQL ไปสั่ง AWS Athena [I] ให้ประมวลผลโมเดล fact_movie_keyword_tfidf ใหม่ทั้งหมดทั้งคลังข้อมูล (Full Refresh ในรูปแบบ materialized='table')
+* AWS Athena [I] คำนวณสรุปข้อมูลภาพยนตร์รายเดือน เช่น การรวมยอดสถิติรายเดือน (Monthly Aggregated Metrics), แนวโน้มความนิยมสะสม (Monthly Popularity Trends) และตัวชี้วัดประสิทธิภาพรายเดือน (Monthly Performance Indicators)
+* เขียนไฟล์ผลลัพธ์ Parquet จัดเก็บลงใน Amazon S3 (Gold Zone / Lakehouse) [J]
+
+> [!NOTE]
+> **ทำไมโมเดล `fact_movie_keyword_tfidf` ต้องคำนวณใหม่ทั้งระบบเดือน เดือนละครั้ง?**
+> * **หลักการของสถิติ TF-IDF:** การคำนวณค่าน้ำหนักคำต้องอาศัยค่าความหายากของคำ (Inverse Document Frequency: IDF) ซึ่งอิงจาก **"จำนวนภาพยนตร์ทั้งหมดในคลังข้อมูล"** ($N$)
+> * **ความแม่นยำของข้อมูล:** เมื่อมีภาพยนตร์ใหม่ถูกบันทึกเข้ามาตลอดทั้งเดือน สัดส่วนความหายากของแต่ละคีย์เวิร์ดจะเปลี่ยนไป จึงจำเป็นต้องคำนวณใหม่ทั้งหมด (Full Refresh) เพื่อให้ค่าน้ำหนักสะท้อนความหมายทางสถิติได้ถูกต้องที่สุด
+> * **Cost & Performance Optimization:** การคำนวณใหม่ทุกวันจะสิ้นเปลืองค่าคิวรีบน AWS Athena โดยไม่จำเป็น เนื่องจากการเปลี่ยนแปลงระดับวันไม่ได้ส่งผลต่อค่าน้ำหนักรวมอย่างมีนัยสำคัญ การรันเพียงเดือนละ 1 ครั้ง จึงเป็นจุดสมดุลที่ดีที่สุดระหว่างความสดใหม่ของข้อมูลและค่าใช้จ่าย cloud
 ---
 
 ## 3. ปัญหาทางเทคนิคและการตัดสินใจเชิงวิศวกรรม (Technical Challenges & Trade-offs)
