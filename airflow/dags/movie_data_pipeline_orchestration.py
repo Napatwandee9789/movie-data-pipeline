@@ -108,8 +108,8 @@ with DAG(
     dag_id="movie_data_pipeline_orchestration",
     default_args=DEFAULT_ARGS,
     description="End-to-end ingestion and dbt-athena transformation orchestrator for movie data warehouse.",
-    # Trigger at 03:00 UTC (10:00 AM Bangkok GMT+7) allowing upstream TMDB exports to settle
-    schedule="0 3 * * *",
+    # Trigger at 00:30 UTC (07:30 AM Bangkok GMT+7)
+    schedule="30 0 * * *",
     start_date=datetime(2026, 1, 7),
     # Critical: Enforce catchup=False to prevent backfill storms on distributed serverless targets
     catchup=False,
