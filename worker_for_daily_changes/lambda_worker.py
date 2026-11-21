@@ -3,7 +3,7 @@
 Processes movie IDs from SQS, pulls detailed metadata, and writes directly to S3.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 import os
@@ -69,7 +69,7 @@ def fetch_movie_detail(movie_id: int):
     # STEP 1.1: QUERY PARAMETER SPECIFICATION
     # -----------------------------------------------------------------------
     # Business requirement: Fetch complete entity attributes in one call
-    params = {"append_to_response": "credits,keywords", "language": "en-US"}
+    params = {"append_to_response": "keywords", "language": "en-US"}
     try:
         # Enforce strict 10s socket timeout to avoid hanging the Lambda container
         res = session.get(
@@ -183,9 +183,13 @@ def lambda_handler(event, context):
         # Microsecond precision prevents collision between concurrent Lambda worker batches
         timestamp_str = utc_now.strftime("%Y%m%d_%H%M%S_%f")
 
+        # Align S3 partition path with the closed T-1 business date (today - 1)
+        # so Hive partitions match the Producer's extraction window rather than ingestion runtime.
+        partition_date = utc_now - timedelta(days=1)
+
         # Hive-compatible date partitioning allows AWS Athena / Glue Crawlers to perform partition pruning
         s3_key = (
-            f"raw/movie_details/daily_changes/year={utc_now.year}/month={utc_now.month:02d}/day={utc_now.day:02d}/"
+            f"raw/movie_details/daily_changes/year={partition_date.year}/month={partition_date.month:02d}/day={partition_date.day:02d}/"
             f"movies_batch_{timestamp_str}.json"
         )
 
@@ -226,3 +230,46 @@ def lambda_handler(event, context):
     # }
     # -----------------------------------------------------------------------
     return {"statusCode": 200, "processed_count": len(enriched_records)}
+
+
+# ===========================================================================
+# ARCHITECTURE & EXECUTION FLOW DIAGRAM
+# ===========================================================================
+#
+#   [Amazon SQS Queue] ──(Event Source Mapping / Batch of Messages)──┐
+#                                                                     ▼
+#   ┌───────────────────────────────────────────────────────────────────────┐
+#   │ STEP 1: PARSE SQS BATCH EVENT (lambda_handler)                        │
+#   │  • Extract event["Records"] (each record holds ~50 movie_ids)         │
+#   │  • Anchor execution timestamp in UTC for consistent S3 partitioning   │
+#   └─────────────────────────────────┬─────────────────────────────────────┘
+#                                     │
+#                                     ▼
+#   ┌───────────────────────────────────────────────────────────────────────┐
+#   │ STEP 2: ITERATE & ENRICH METADATA (fetch_movie_detail)                │
+#   │                                                                       │
+#   │  For each SQS record ──► For each movie_id:                           │
+#   │   1. GET /3/movie/{movie_id}?append_to_response=credits,keywords      │
+#   │      • Consolidates details + cast/crew + keywords in 1 API call      │
+#   │      • Soft-fail on single-movie network error (log & return None)    │
+#   │   2. Compliance & Quality Filter:                                     │
+#   │      • Keep ONLY if adult == false AND video == false                 │
+#   │   3. Rate-Limit Guard:                                                │
+#   │      • Sleep 50ms (0.05s) to prevent HTTP 429 across parallel workers │
+#   └─────────────────────────────────┬─────────────────────────────────────┘
+#                                     │
+#                                     ▼ (If enriched_records is non-empty)
+#   ┌───────────────────────────────────────────────────────────────────────┐
+#   │ STEP 3: ATOMIC DATA LAKE SINK (Amazon S3 Raw Zone)                    │
+#   │                                                                       │
+#   │  • Serialize list of dicts into Newline Delimited JSON (NDJSON)       │
+#   │  • Generate collision-free key with microsecond timestamp:            │
+#   │    raw/movie_details/daily_changes/year=YYYY/month=MM/day=DD/         │
+#   │    └── movies_batch_YYYYMMDD_HHMMSS_ffffff.json                       │
+#   │  • s3_client.put_object()                                             │
+#   │      ├── [Success] ──► Return HTTP 200 (SQS auto-deletes messages)    │
+#   │      └── [ClientError] ──► Re-raise exception                         │
+#   │                            └──► Triggers SQS Retry ──► [SQS DLQ]      │
+#   └───────────────────────────────────────────────────────────────────────┘
+#
+# ===========================================================================
