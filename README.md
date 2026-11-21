@@ -194,7 +194,8 @@
 │   │   └── marts/
 │   │       ├── dimensions/ # ตารางมิติพร้อม Surrogate Keys
 │   │       ├── bridges/    # ตารางสะพานเชื่อมความสัมพันธ์ M:N
-│   │       └── facts/      # ตาราง Fact วัดกระแสและคะแนน TF-IDF
+│   │       └── facts/      # ตาราง Fact วัดกระแส 30 วันหลังหนังฉาย
+│   │       └── serving/      # ตารางที่ทำ pre-aggregation จาก fact เพื่อให้ backend ดึงข้อมูลไปแสดงใน dashboardได้อย่างรวดเร็ว
 │   ├── dbt_project.yml
 │   └── profiles.yml
 ├── fetcher_for_daily_snapshot/
@@ -220,38 +221,88 @@
 ## 8. วิธีการติดตั้งและรันระบบ (Setup & Configuration)
 
 ### 8.1 สิ่งที่ต้องเตรียมบน AWS (Cloud Prerequisites)
-* **Amazon S3:** Bucket สำหรับจัดเก็บข้อมูลบน Data Lakehouse
-  * โฟลเดอร์ `raw/`: เก็บข้อมูลดิบในรูปแบบ **NDJSON (Newline Delimited JSON) เท่านั้น**
-  * โฟลเดอร์ `gold/`: เก็บตารางปลายทางระดับ Marts (Parquet Format)
-* **Amazon ECR:** 3 Repositories (`fetcher_for_daily_snapshot`, `producer_for_daily_changes`, `worker_for_daily_changes`)
-* **AWS Lambda:** 3 ฟังก์ชันที่ผูกกับ ECR Images
-* **Amazon SQS:** 1 Standard Queue สำหรับคั่นคิวงาน Movie IDs
-* **AWS Glue & Athena:** 
-  * สร้าง **Database Schema บน Glue Data Catalog** ตามฟิลด์และ Data Types เดียวกับข้อมูลดิบในโฟลเดอร์ `raw/` แบบ 1:1
-  * สร้าง **Workgroup บน Athena** สำหรับรองรับการประมวลผล Transformation ของ dbt-athena
-* **AWS EC2:** Ubuntu Server ติดตั้ง Docker, Docker Compose และเปิด 4GB Swap Space
+- **Amazon S3:** Bucket สำหรับจัดเก็บข้อมูลบน Data Lakehouse
+  - โฟลเดอร์ `raw/`: เก็บข้อมูลดิบในรูปแบบ **NDJSON (Newline Delimited JSON) เท่านั้น**
+  - โฟลเดอร์ `gold/`: เก็บตารางปลายทางระดับ Marts (Parquet Format)
+- **Amazon ECR:** 3 Repositories (`fetcher_for_daily_snapshot`, `producer_for_daily_changes`, `worker_for_daily_changes`)
+- **AWS Lambda:** 3 ฟังก์ชันที่ผูกกับ ECR Images
+- **Amazon SQS:** 1 Standard Queue สำหรับคั่นคิวงาน Movie IDs
+- **AWS Glue & Athena:** 
+  - สร้าง **Database Schema บน Glue Data Catalog** ตามฟิลด์และ Data Types เดียวกับข้อมูลดิบในโฟลเดอร์ `raw/` แบบ 1:1
+  - สร้าง **Workgroup บน Athena** สำหรับรองรับการประมวลผล Transformation ของ dbt-athena
+- **AWS EC2 & EventBridge:** 
+  - Ubuntu Server ติดตั้ง Docker, Docker Compose และเปิด 4GB Swap Space
+  - ตั้งค่า **Amazon EventBridge Scheduler** สำหรับเปิด-ปิด EC2 ตามรอบเวลาที่กำหนด (ไม่ใช้ Elastic IP เพื่อประหยัดค่าใช้จ่าย)
 
 ### 8.2 การกำหนด Environment Variables บน AWS Lambda
-* **Snapshot Lambda:**
-  * `TMDB_API_KEY`: API Key สำหรับดึงข้อมูลจาก TMDB
-  * `S3_BUCKET_NAME`: ชื่อ S3 Bucket ปลายทาง
-* **Producer Lambda:**
-  * `TMDB_API_KEY`: API Key สำหรับดึงข้อมูลจาก TMDB
-  * `SQS_QUEUE_URL`: URL ของคิว Amazon SQS
-* **Worker Lambda:**
-  * `TMDB_API_KEY`: API Key สำหรับดึงข้อมูลจาก TMDB
-  * `S3_BUCKET_NAME`: ชื่อ S3 Bucket ปลายทาง
+- **Snapshot Lambda:**
+  - `TMDB_API_KEY`: API Key สำหรับดึงข้อมูลจาก TMDB
+  - `S3_BUCKET_NAME`: ชื่อ S3 Bucket ปลายทาง
+- **Producer Lambda:**
+  - `TMDB_API_KEY`: API Key สำหรับดึงข้อมูลจาก TMDB
+  - `SQS_QUEUE_URL`: URL ของคิว Amazon SQS
+- **Worker Lambda:**
+  - `TMDB_API_KEY`: API Key สำหรับดึงข้อมูลจาก TMDB
+  - `S3_BUCKET_NAME`: ชื่อ S3 Bucket ปลายทาง
 
-### 8.3 การกำหนด Security & CI/CD Credentials
-1. **GitHub Secrets:** กำหนดตัวแปรใน Repository Settings -> Secrets and variables -> Actions:
-   * `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_ACCOUNT_ID`
-   * `EC2_AIRFLOW_SERVER_HOST`: Public IP ของ EC2
-   * `EC2_AIRFLOW_SERVER_USER`: User ของ EC2 (เช่น `ubuntu`)
-   * `EC2_AIRFLOW_SERVER_SSH_KEY`: Private Key สำหรับเชื่อมต่อ SSH ไปยัง EC2
-2. **GitHub Deploy Keys:**
-   * นำ Public Key ของเครื่อง EC2 ไปเพิ่มใน GitHub Repository -> Settings -> Deploy keys เพื่ออนุญาตให้เซิร์ฟเวอร์สามารถสั่ง `git pull` โค้ดลงมาได้
-3. **Airflow Environment Configuration:**
-   * คัดลอกและตั้งค่าในโฟลเดอร์ `airflow/`:
+### 8.3 การกำหนด Security & Hybrid CI/CD Configuration
+ระบบ Deploy ของ Airflow ถูกออกแบบเป็น **Hybrid CI/CD** เพื่อรองรับ EC2 ที่เปลี่ยน Public IP ทุกครั้งที่เปิดใหม่:
+- **เมื่อ Push โค้ดตอน EC2 เปิดอยู่ (`running`):** GitHub Actions จะดึง Public IP ล่าสุดของวันนั้นแบบ Dynamic และ SSH เข้าไปอัปเดตทันที
+- **เมื่อ Push โค้ดตอน EC2 ปิดอยู่ (`stopped`):** GitHub Actions จะข้ามการ Deploy (`Exit 0`) โดยไม่ปลุกเครื่องนอกเวลา และปล่อยให้สคริปต์ `@reboot` บน EC2 ดึงโค้ดอัปเดตเองอัตโนมัติในรอบเปิดเครื่องถัดไป
+
+1. **GitHub Secrets:** กำหนดตัวแปรใน `Repository Settings -> Secrets and variables -> Actions`:
+   - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_ACCOUNT_ID` *(ต้องมีสิทธิ์ `ec2:DescribeInstances` สำหรับเช็กสถานะและดึง IP ล่าสุด)*
+   - `EC2_INSTANCE_ID`: รหัส Instance ID ของเครื่อง EC2 (เช่น `i-0abcd1234efgh5678`)
+   - `EC2_AIRFLOW_SERVER_USER`: User ของ EC2 (เช่น `ubuntu`)
+   - `EC2_AIRFLOW_SERVER_SSH_KEY`: Private Key (`.pem`) สำหรับเชื่อมต่อ SSH ไปยัง EC2
+   - `EC2_AIRFLOW_SERVER_PORT`: Port สำหรับ SSH (เช่น `22`)
+
+2. **GitHub Credentials บน EC2:**
+   - ตั้งค่า Deploy Key หรือบันทึก Git Credentials บนเครื่อง EC2 เพื่อให้เซิร์ฟเวอร์สามารถสั่ง `git fetch` และ `git pull` แบบอัตโนมัติได้โดยไม่ติดหน้าถามรหัสผ่าน:
+     ```bash
+     git config --global credential.helper store
+     git fetch origin main
+     ```
+
+3. **ตั้งค่า Boot-Time Auto-Deploy Script บน EC2 (`@reboot`):**
+   - สร้างไฟล์ `/home/ubuntu/auto_deploy.sh` เพื่อเช็ก Commit ใหม่ทุกครั้งที่เปิดเครื่อง (หากไม่มีโค้ดใหม่จะข้ามทันทีโดยไม่กวนการทำงานของ Airflow):
+     ```bash
+     cat << 'EOF' > ~/auto_deploy.sh
+     #!/bin/bash
+
+     echo "=========================================="
+     echo "Boot Deploy Check at: $(date)"
+     echo "=========================================="
+
+     sleep 20
+     cd /home/ubuntu/movie-data-pipeline || exit 1
+
+     git fetch origin main
+     LOCAL_HASH=$(git rev-parse HEAD)
+     REMOTE_HASH=$(git rev-parse origin/main)
+
+     if [ "$LOCAL_HASH" = "$REMOTE_HASH" ]; then
+       echo "No new code changes ($LOCAL_HASH). Skipping Docker rebuild."
+       exit 0
+     fi
+
+     echo "New changes detected! Updating from $LOCAL_HASH to$REMOTE_HASH..."
+     git pull origin main
+
+     cd airflow || exit 1
+     docker compose up -d --build
+     echo "Deployment completed at: $(date)"
+     EOF
+
+     chmod +x ~/auto_deploy.sh
+     ```
+   - ผูกสคริปต์เข้ากับ `crontab -e` เพื่อให้ทำงานอัตโนมัติทุกครั้งที่ EC2 เปิดเครื่อง:
+     ```cron
+     @reboot /home/ubuntu/auto_deploy.sh >> /home/ubuntu/deploy.log 2>&1
+     ```
+
+4. **Airflow Environment Configuration:**
+   - คัดลอกและตั้งค่าในโฟลเดอร์ `airflow/`:
      ```bash
      cd airflow
      cp .env.example .env
@@ -276,7 +327,7 @@ uv run python scripts/backfill_historical_data.py
 เข้าไปยังโฟลเดอร์ `airflow` และรัน Docker Compose เพื่อเริ่มต้นบริการ Apache Airflow
 
 ```bash
-cd airflow
+cd /home/ubuntu/movie-data-pipeline/airflow
 
 # Build และเริ่มต้น Containers ใน Background
 docker compose up -d --build
@@ -303,6 +354,8 @@ dbt run
 # ตรวจสอบคุณภาพข้อมูลด้วย Tests
 dbt test
 ```
+
+> **หมายเหตุ:** ขั้นตอนนี้เป็นทางเลือก (ทำหรือไม่ก็ได้) โดยในการทำงานปกติ Apache Airflow จะเป็นผู้เรียกใช้งาน dbt ตามลำดับการทำงานของ Pipeline อยู่แล้ว
 
 ---
 
@@ -531,7 +584,8 @@ GitHub Actions workflows are separated using path filters:
 │   │   └── marts/
 │   │       ├── dimensions/ # Dimension tables with surrogate keys
 │   │       ├── bridges/    # Bridge tables for M:N relationships
-│   │       └── facts/      # Fact tables for engagement and TF-IDF metrics
+│   │       └── facts/      # Fact tables for engagement
+│   │       └── serving/      # Pre-aggregated tables from fact tables for fast backend retrieval and dashboard rendering 
 │   ├── dbt_project.yml
 │   └── profiles.yml
 ├── fetcher_for_daily_snapshot/
@@ -558,60 +612,94 @@ GitHub Actions workflows are separated using path filters:
 
 ### 8.1 AWS Cloud Prerequisites
 
--   **Amazon S3:** Create a bucket for the Data Lakehouse.
-    -   `raw/`: Stores raw data exclusively in **NDJSON (Newline
-        Delimited JSON)** format.
-    -   `gold/`: Stores final Marts tables in **Parquet** format.
--   **Amazon ECR:** Create three repositories:
-    `fetcher_for_daily_snapshot`, `producer_for_daily_changes`, and
-    `worker_for_daily_changes`.
--   **AWS Lambda:** Create three functions and configure each to use its
-    corresponding ECR image.
--   **Amazon SQS:** Create one Standard Queue to buffer movie ID tasks.
--   **AWS Glue & Amazon Athena:**
-    -   Create a **database schema in Glue Data Catalog** whose fields
-        and data types match the raw data in `raw/` on a 1:1 basis.
-    -   Create an **Athena Workgroup** for dbt-athena transformations.
--   **AWS EC2:** Provision an Ubuntu Server with Docker and Docker
-    Compose installed, and configure 4 GB of swap space.
+- **Amazon S3:** Create a bucket for the Data Lakehouse.
+  - `raw/`: Stores raw data exclusively in **NDJSON (Newline Delimited JSON)** format.
+  - `gold/`: Stores final Marts tables in **Parquet** format.
+- **Amazon ECR:** Create three repositories: `fetcher_for_daily_snapshot`, `producer_for_daily_changes`, and `worker_for_daily_changes`.
+- **AWS Lambda:** Create three functions and configure each to use its corresponding ECR image.
+- **Amazon SQS:** Create one Standard Queue to buffer movie ID tasks.
+- **AWS Glue & Amazon Athena:**
+  - Create a **database schema in Glue Data Catalog** whose fields and data types match the raw data in `raw/` on a 1:1 basis.
+  - Create an **Athena Workgroup** for dbt-athena transformations.
+- **AWS EC2 & EventBridge:**
+  - Provision an Ubuntu Server with Docker and Docker Compose installed, and configure 4 GB of swap space.
+  - Configure **Amazon EventBridge Scheduler** to automatically start and stop the EC2 instance on a daily schedule (no Elastic IP is attached to minimize costs).
 
 ### 8.2 AWS Lambda Environment Variables
 
--   **Snapshot Lambda:**
-    -   `TMDB_API_KEY`: API key for retrieving data from TMDB.
-    -   `S3_BUCKET_NAME`: Destination S3 bucket name.
--   **Producer Lambda:**
-    -   `TMDB_API_KEY`: API key for retrieving data from TMDB.
-    -   `SQS_QUEUE_URL`: Amazon SQS queue URL.
--   **Worker Lambda:**
-    -   `TMDB_API_KEY`: API key for retrieving data from TMDB.
-    -   `S3_BUCKET_NAME`: Destination S3 bucket name.
+- **Snapshot Lambda:**
+  - `TMDB_API_KEY`: API key for retrieving data from TMDB.
+  - `S3_BUCKET_NAME`: Destination S3 bucket name.
+- **Producer Lambda:**
+  - `TMDB_API_KEY`: API key for retrieving data from TMDB.
+  - `SQS_QUEUE_URL`: Amazon SQS queue URL.
+- **Worker Lambda:**
+  - `TMDB_API_KEY`: API key for retrieving data from TMDB.
+  - `S3_BUCKET_NAME`: Destination S3 bucket name.
 
-### 8.3 Security & CI/CD Credentials
+### 8.3 Security & Hybrid CI/CD Configuration
 
-1.  **GitHub Secrets:** Add the following repository secrets under
-    **Settings → Secrets and variables → Actions**:
-    -   `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`,
-        `AWS_ACCOUNT_ID`
-    -   `EC2_AIRFLOW_SERVER_HOST`: Public IP address of the EC2
-        instance.
-    -   `EC2_AIRFLOW_SERVER_USER`: EC2 login user (for example,
-        `ubuntu`).
-    -   `EC2_AIRFLOW_SERVER_SSH_KEY`: Private key used to connect to EC2
-        over SSH.
-2.  **GitHub Deploy Keys:**
-    -   Add the EC2 machine's public key under **Repository → Settings →
-        Deploy keys** to allow the server to pull the repository using
-        `git pull`.
-3.  **Airflow Environment Configuration:**
-    -   Copy the example environment file and configure it in the
-        `airflow/` directory:
+The Airflow deployment pipeline is designed as a **Hybrid CI/CD** workflow to handle dynamic Public IPs assigned each time the EC2 instance starts:
+- **When pushing code while EC2 is `running`:** GitHub Actions dynamically fetches the current Public IP for the day and deploys updates immediately via SSH.
+- **When pushing code while EC2 is `stopped`:** GitHub Actions skips deployment (`Exit 0`) without waking the instance off-schedule, letting the `@reboot` script on EC2 pull the updates automatically on the next scheduled boot.
 
-    ``` bash
-    cd airflow
-    cp .env.example .env
-    # Set AIRFLOW_UID=50000 and configure AWS / Athena connections
-    ```
+1. **GitHub Secrets:** Add the following repository secrets under **Settings → Secrets and variables → Actions**:
+   - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_ACCOUNT_ID` *(must include `ec2:DescribeInstances` permission to check instance state and retrieve the dynamic Public IP)*
+   - `EC2_INSTANCE_ID`: Target EC2 instance ID (e.g., `i-0abcd1234efgh5678`).
+   - `EC2_AIRFLOW_SERVER_USER`: EC2 login user (e.g., `ubuntu`).
+   - `EC2_AIRFLOW_SERVER_SSH_KEY`: Private key (`.pem`) used to connect to EC2 over SSH.
+   - `EC2_AIRFLOW_SERVER_PORT`: SSH port (e.g., `22`).
+
+2. **GitHub Credentials on EC2:**
+   - Configure a Deploy Key or store Git credentials on the EC2 instance so the server can run `git fetch` and `git pull` non-interactively without password prompts:
+     ```bash
+     git config --global credential.helper store
+     git fetch origin main
+     ```
+
+3. **Configure Boot-Time Auto-Deploy Script on EC2 (`@reboot`):**
+   - Create `/home/ubuntu/auto_deploy.sh` to check for new commits on every boot (if no new commits exist, it exits immediately without disrupting Airflow):
+     ```bash
+     cat << 'EOF' > ~/auto_deploy.sh
+     #!/bin/bash
+
+     echo "=========================================="
+     echo "Boot Deploy Check at: $(date)"
+     echo "=========================================="
+
+     sleep 20
+     cd /home/ubuntu/movie-data-pipeline || exit 1
+
+     git fetch origin main
+     LOCAL_HASH=$(git rev-parse HEAD)
+     REMOTE_HASH=$(git rev-parse origin/main)
+
+     if [ "$LOCAL_HASH" = "$REMOTE_HASH" ]; then
+       echo "No new code changes ($LOCAL_HASH). Skipping Docker rebuild."
+       exit 0
+     fi
+
+     echo "New changes detected! Updating from $LOCAL_HASH to$REMOTE_HASH..."
+     git pull origin main
+
+     cd airflow || exit 1
+     docker compose up -d --build
+     echo "Deployment completed at: $(date)"
+     EOF
+
+     chmod +x ~/auto_deploy.sh
+     ```
+   - Register the script in `crontab -e` to run automatically whenever the EC2 instance boots up:
+     ```cron
+     @reboot /home/ubuntu/auto_deploy.sh >> /home/ubuntu/deploy.log 2>&1
+     ```
+
+4. **Airflow Environment Configuration:**
+   - Copy the example environment file and configure it in the `airflow/` directory:
+     ```bash
+     cd airflow
+     cp .env.example .env
+     # Set AIRFLOW_UID=50000 and configure AWS / Athena connections
 
 ### 8.4 Running the System
 
@@ -668,38 +756,3 @@ dbt test
 > Airflow invokes dbt according to the pipeline execution sequence.
 
 ---
-
-
-```mermaid:
-graph LR
-    subgraph EC2["AWS EC2 Host"]
-        AF["Apache Airflow"]
-        DBT["dbt Core"]
-    end
-
-    subgraph AWS_Ingestion["Serverless Ingestion Layer"]
-        L_SNAP["Lambda: Snapshot"]
-        L_PROD["Lambda: Producer"]
-        QUEUE[("Amazon SQS")]
-        L_WORK["Lambda: Worker Pool"]
-    end
-
-    subgraph S3_Raw["Amazon S3 (Data Lake)"]
-        RAW_SNAP[("raw/daily_snapshot<br/>(NDJSON)")]
-        RAW_CHANGE[("raw/daily_changes<br/>(NDJSON)")]
-    end
-
-    subgraph Analytics["Lakehouse & Marts"]
-        ATHENA["AWS Athena"]
-        GLUE["AWS Glue Catalog"]
-        GOLD[("S3: gold/<br/>(Parquet Marts)")]
-    end
-
-    AF -->|1. Invoke| L_SNAP --> RAW_SNAP
-    AF -->|2. Invoke| L_PROD --> QUEUE --> L_WORK --> RAW_CHANGE
-    AF -.->|3. Wait 7 Mins| DBT
-    DBT --> ATHENA
-    ATHENA --- GLUE
-    RAW_SNAP & RAW_CHANGE --> ATHENA
-    ATHENA -->|Write Marts| GOLD
-```
