@@ -1,9 +1,9 @@
-movie_data_warehouse:
+movie_data_lakehouse:
   outputs:
     dev:
       type: athena
       region_name: ap-southeast-2          
-      schema: movie_data_warehouse                   
+      schema: marts                  
       database: awsdatacatalog
       workgroup: primary  
       s3_staging_dir: s3://my-personal-movie-data-lake/athena-query-results/

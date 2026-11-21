@@ -6,7 +6,7 @@ name: 'data_transformation_dbt'
 version: '1.0.0'
 
 # This setting configures which "profile" dbt uses for this project.
-profile: 'movie_data_warehouse'
+profile: 'movie_data_lakehouse'
 
 # These configurations specify where dbt should look for different types of files.
 # The `model-paths` config, for example, states that models in this project can be
@@ -41,11 +41,19 @@ models:
         +tags: ["daily_run"]
       
       facts:
-        fact_movie_daily_engagement_100d:
+        fact_movie_daily_engagement_30d:
           +tags: ["daily_run"]
 
-        fact_movie_keyword_tfidf:
+
+    serving:
+          +schema: dashboard_serving   
+          +materialized: table
+          +table_type: hive            
+          +format: parquet
           +tags: ["monthly_run"]
-
-
-
+          summary_keyword_tf_idf:
+                  +external_location: 's3://my-personal-movie-data-lake/gold/dashboard_serving/summary_keyword_tf_idf/'
+                  +partitioned_by: ['genre']
+          summary_financial_metrics:
+                  +partitioned_by: ['release_year']
+                  +external_location: 's3://my-personal-movie-data-lake/gold/dashboard_serving/summary_financial_metrics/'

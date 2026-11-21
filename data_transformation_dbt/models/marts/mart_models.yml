@@ -56,32 +56,6 @@ models:
       - name: updated_at
         description: "Timestamp when the record was last refreshed in the data warehouse."
 
-  - name: dim_persons
-    description: "Person dimension cataloging cast members, crew personnel, and directors."
-    columns:
-      - name: person_sur_id
-        description: "Primary Surrogate Key of the person."
-        data_tests:
-          - unique
-          - not_null
-      - name: person_source_id
-        description: "Natural business key of the individual originating from the TMDb API."
-        data_tests:
-          - unique
-          - not_null
-      - name: name
-        description: "Full professional name of the person."
-        data_tests:
-          - not_null
-      - name: gender
-        description: "Gender identity classification of the individual."
-      - name: profile_path
-        description: "Relative URL path to the headshot portrait image."
-      - name: loaded_at
-        description: "Timestamp when the person record was initially ingested."
-      - name: updated_at
-        description: "Timestamp when the person record was last modified."
-
   - name: dim_companies
     description: "Production studio and distributing company dimension."
     columns:
@@ -213,41 +187,6 @@ models:
   # ==========================================
   # Bridges (Many-to-Many)
   # ==========================================
-  - name: bridge_movie_person
-    description: "Bridge resolving many-to-many associations between movies, individuals, and production roles."
-    columns:
-      - name: movie_person_bridge_id
-        description: "Primary Surrogate Key of the movie-person-role relationship."
-        data_tests:
-          - unique
-          - not_null
-      - name: movie_sur_id
-        description: "Foreign key referencing dim_movies."
-        data_tests:
-          - not_null
-          - relationships:
-              to: ref('dim_movies')
-              field: movie_sur_id
-      - name: person_sur_id
-        description: "Foreign key referencing dim_persons."
-        data_tests:
-          - not_null
-          - relationships:
-              to: ref('dim_persons')
-              field: person_sur_id
-      - name: role
-        description: "Functional responsibility assigned on the project (e.g., Actor, Director, Writer)."
-        data_tests:
-          - not_null
-      - name: loaded_at
-        description: "Timestamp when the association was ingested."
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - movie_sur_id
-            - person_sur_id
-            - role
-
   - name: bridge_movie_company
     description: "Bridge resolving many-to-many associations between movies and producing companies."
     columns:
@@ -371,8 +310,8 @@ models:
   # ==========================================
   # Fact Tables
   # ==========================================
-  - name: fact_movie_daily_engagement_100d
-    description: "Periodic snapshot fact tracking daily performance, voting metrics, and popularity over the initial 100 days from release."
+  - name: fact_movie_daily_engagement_30d
+    description: "Periodic snapshot fact tracking daily performance, voting metrics, and popularity over the initial 30 days from release."
     columns:
       - name: fact_movie_daily_id
         description: "Primary Surrogate Key of the periodic daily engagement record."
@@ -411,64 +350,4 @@ models:
             - movie_sur_id
             - collected_date_sur_id
 
-  - name: fact_movie_keyword_tfidf
-    description: "Accumulating fact storing Term Frequency-Inverse Document Frequency (TF-IDF) weights measuring keyword specificity across year-genre-country segmentations."
-    columns:
-      - name: fact_movie_keyword_tfidf_id
-        description: "Primary Surrogate Key of the calculated TF-IDF record."
-        data_tests:
-          - unique
-          - not_null
-      - name: release_year
-        description: "Release year partition extracted from the movie release date."
-        data_tests:
-          - not_null:
-              config:
-                where: "aggregation_level IN ('year_genre_country', 'year_genre', 'year_country', 'year')"
-      - name: genre_sur_id
-        description: "Foreign key referencing dim_genres for the target segment."
-        data_tests:
-          - not_null
-          - relationships:
-              to: ref('dim_genres')
-              field: genre_sur_id
-      - name: country_sur_id
-        description: "Foreign key referencing dim_countries for the target segment."
-        data_tests:
-          - not_null
-          - relationships:
-              to: ref('dim_countries')
-              field: country_sur_id
-      - name: keyword_sur_id
-        description: "Foreign key referencing dim_keywords representing the analyzed term."
-        data_tests:
-          - not_null
-          - relationships:
-              to: ref('dim_keywords')
-              field: keyword_sur_id
-      - name: total_keyword_by_group
-        description: "Absolute term frequency (term_count): occurrences of the keyword within the specific year-genre-country corpus group."
-      - name: total_group_by_keyword
-        description: "Document frequency (doc_freq): total distinct year-genre-country groups containing this keyword."
-      - name: total_group
-        description: "Corpus size (total_year_genre_countries): total count of all distinct year-genre-country groups across the dataset."
-      - name: tf
-        description: "Term Frequency normalized relative to the sum of all keyword occurrences within the corpus group."
-      - name: idf
-        description: "Smooth Inverse Document Frequency: ln((1 + total_group) / (1 + doc_freq)) + 1."
-      - name: tf_idf
-        description: "Composite TF-IDF score (tf * idf) quantifying keyword prominence and uniqueness within the segment."
-      - name: aggregation_level
-        description: "Contextual grain of the statistical calculation (e.g., year_genre_country)."
-        data_tests:
-          - not_null
-      - name: calculated_at
-        description: "Timestamp when the statistical model calculation was executed."
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - aggregation_level
-            - keyword_sur_id
-            - release_year
-            - genre_sur_id
-            - country_sur_id
+  

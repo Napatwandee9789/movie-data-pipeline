@@ -3,7 +3,11 @@
         materialized = 'incremental',
         unique_key = 'movie_company_bridge_id',
         incremental_strategy = 'merge',
-        merge_update_columns = []
+        merge_update_columns = [],
+        post_hook = [
+        "{% if execute and modules.datetime.date.today().weekday() == 6 %} OPTIMIZE {{ this }} REWRITE DATA USING BIN_PACK; {% endif %}",
+        "{% if execute and modules.datetime.date.today().weekday() == 6 %} VACUUM {{ this }}; {% endif %}"
+    ]
     )
 }}
 

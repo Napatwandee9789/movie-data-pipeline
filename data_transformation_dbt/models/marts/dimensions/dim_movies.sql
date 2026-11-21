@@ -8,6 +8,10 @@
             'runtime', 'status', 'original_language', 'original_title', 
             'title', 'overview', 'poster_path', 'backdrop_path', 
             'release_date_sur_id', 'updated_at'
+        ],
+        post_hook = [
+            "{% if execute and modules.datetime.date.today().weekday() == 6 %} OPTIMIZE {{ this }} REWRITE DATA USING BIN_PACK; {% endif %}",
+            "{% if execute and modules.datetime.date.today().weekday() == 6 %} VACUUM {{ this }}; {% endif %}"
         ]
     )
 }}
@@ -87,9 +91,9 @@ WITH movies_raw AS (
         (year, month, day) IN (
             {% for i in range(0, 1) %}
                 (
-                    '{{ (run_started_at - modules.datetime.timedelta(days=i)).strftime("%Y") }}',
-                    '{{ (run_started_at - modules.datetime.timedelta(days=i)).strftime("%m") }}',
-                    '{{ (run_started_at - modules.datetime.timedelta(days=i)).strftime("%d") }}'
+                    '{{ (run_started_at - modules.datetime.timedelta(days=i+1)).strftime("%Y") }}',
+                    '{{ (run_started_at - modules.datetime.timedelta(days=i+1)).strftime("%m") }}',
+                    '{{ (run_started_at - modules.datetime.timedelta(days=i+1)).strftime("%d") }}'
                 ){{ "," if not loop.last }}
             {% endfor %}
         )

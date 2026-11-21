@@ -1,12 +1,6 @@
-{{ config(
-    materialized = 'table',
-    tags = ['monthly_run'],
-    partitioned_by = ['aggregation_level']
-) }}
-
 WITH year_keyword_pairs AS (
     SELECT 
-        EXTRACT(YEAR FROM d.full_date) AS release_year,
+        CAST(EXTRACT(YEAR FROM d.full_date) AS VARCHAR) AS release_year,
         bk.keyword_sur_id
     FROM {{ ref('bridge_movie_keyword') }} bk
     JOIN {{ ref('dim_movies') }} m 
@@ -14,7 +8,12 @@ WITH year_keyword_pairs AS (
     LEFT JOIN {{ ref('dim_dates') }} d
         ON d.date_sur_id = m.release_date_sur_id
     WHERE m.release_date_sur_id IS NOT NULL
+      AND CAST(m.release_date_sur_id AS VARCHAR) NOT IN ('-1', '-2')
+      AND d.full_date IS NOT NULL
+      AND bk.movie_sur_id IS NOT NULL
+      AND CAST(bk.movie_sur_id AS VARCHAR) NOT IN ('-1', '-2')
       AND bk.keyword_sur_id IS NOT NULL
+      AND CAST(bk.keyword_sur_id AS VARCHAR) NOT IN ('-1', '-2')
 ),
 
 term_year_freq AS (
@@ -49,8 +48,8 @@ year_corpus_stats AS (
 tf_idf_by_year AS (
     SELECT 
         release_year,
-        '-1' AS genre_sur_id,
-        '-1' AS country_sur_id,
+        'ALL' AS genre_sur_id,
+        'ALL' AS country_sur_id,
         keyword_sur_id,
         term_count AS total_keyword_by_group,
         ROUND(CAST(tf AS DECIMAL(10, 6)), 6) AS tf,
@@ -61,8 +60,7 @@ tf_idf_by_year AS (
         AS DECIMAL(10, 6)), 6) AS idf,
         ROUND(CAST(
             tf * (LN((1.0 + total_years) / (1.0 + doc_freq)) + 1.0) 
-        AS DECIMAL(10, 6)), 6) AS tf_idf,
-        'year' AS aggregation_level
+        AS DECIMAL(10, 6)), 6) AS tf_idf
     FROM year_corpus_stats
 ),
 
@@ -73,8 +71,12 @@ genre_keyword_pairs AS (
     FROM {{ ref('bridge_movie_genre') }} bg
     JOIN {{ ref('bridge_movie_keyword') }} bk 
         ON bg.movie_sur_id = bk.movie_sur_id
-    WHERE bg.genre_sur_id IS NOT NULL
+    WHERE bg.movie_sur_id IS NOT NULL
+      AND CAST(bg.movie_sur_id AS VARCHAR) NOT IN ('-1', '-2')
+      AND bg.genre_sur_id IS NOT NULL
+      AND CAST(bg.genre_sur_id AS VARCHAR) NOT IN ('-1', '-2')
       AND bk.keyword_sur_id IS NOT NULL
+      AND CAST(bk.keyword_sur_id AS VARCHAR) NOT IN ('-1', '-2')
 ),
 
 term_genre_freq AS (
@@ -108,9 +110,9 @@ genre_corpus_stats AS (
 
 tf_idf_by_genre AS (
     SELECT
-        -1 AS release_year,
-        genre_sur_id,
-        '-1' AS country_sur_id,
+        'ALL' AS release_year,
+        CAST(genre_sur_id AS VARCHAR) AS genre_sur_id,
+        'ALL' AS country_sur_id,
         keyword_sur_id,
         term_count AS total_keyword_by_group,
         ROUND(CAST(tf AS DECIMAL(10, 6)), 6) AS tf,
@@ -121,8 +123,7 @@ tf_idf_by_genre AS (
         AS DECIMAL(10, 6)), 6) AS idf,
         ROUND(CAST(
             tf * (LN((1.0 + total_genres) / (1.0 + doc_freq)) + 1.0) 
-        AS DECIMAL(10, 6)), 6) AS tf_idf,
-        'genre' AS aggregation_level
+        AS DECIMAL(10, 6)), 6) AS tf_idf
     FROM genre_corpus_stats
 ),
 
@@ -133,8 +134,12 @@ country_keyword_pairs AS (
     FROM {{ ref('bridge_movie_country') }} bc
     JOIN {{ ref('bridge_movie_keyword') }} bk 
         ON bc.movie_sur_id = bk.movie_sur_id
-    WHERE bc.country_sur_id IS NOT NULL 
+    WHERE bc.movie_sur_id IS NOT NULL
+      AND CAST(bc.movie_sur_id AS VARCHAR) NOT IN ('-1', '-2')
+      AND bc.country_sur_id IS NOT NULL 
+      AND CAST(bc.country_sur_id AS VARCHAR) NOT IN ('-1', '-2')
       AND bk.keyword_sur_id IS NOT NULL
+      AND CAST(bk.keyword_sur_id AS VARCHAR) NOT IN ('-1', '-2')
 ),
 
 term_country_freq AS (
@@ -168,9 +173,9 @@ country_corpus_stats AS (
 
 tf_idf_by_country AS (
     SELECT
-        -1 AS release_year,
-        '-1' AS genre_sur_id, 
-        country_sur_id,
+        'ALL' AS release_year,
+        'ALL' AS genre_sur_id, 
+        CAST(country_sur_id AS VARCHAR) AS country_sur_id,
         keyword_sur_id,
         term_count AS total_keyword_by_group,
         ROUND(CAST(tf AS DECIMAL(10, 6)), 6) AS tf,
@@ -181,14 +186,13 @@ tf_idf_by_country AS (
         AS DECIMAL(10, 6)), 6) AS idf,
         ROUND(CAST(
             tf * (LN((1.0 + total_countries) / (1.0 + doc_freq)) + 1.0) 
-        AS DECIMAL(10, 6)), 6) AS tf_idf,
-        'country' AS aggregation_level
+        AS DECIMAL(10, 6)), 6) AS tf_idf
     FROM country_corpus_stats
 ),
 
 year_genre_keyword_pairs AS (
     SELECT 
-        EXTRACT(YEAR FROM d.full_date) AS release_year,
+        CAST(EXTRACT(YEAR FROM d.full_date) AS VARCHAR) AS release_year,
         bg.genre_sur_id,
         bk.keyword_sur_id
     FROM {{ ref('bridge_movie_keyword') }} bk
@@ -199,8 +203,14 @@ year_genre_keyword_pairs AS (
     LEFT JOIN {{ ref('dim_dates') }} d 
         ON d.date_sur_id = m.release_date_sur_id
     WHERE m.release_date_sur_id IS NOT NULL
+      AND CAST(m.release_date_sur_id AS VARCHAR) NOT IN ('-1', '-2')
+      AND d.full_date IS NOT NULL
+      AND bk.movie_sur_id IS NOT NULL
+      AND CAST(bk.movie_sur_id AS VARCHAR) NOT IN ('-1', '-2')
       AND bg.genre_sur_id IS NOT NULL
+      AND CAST(bg.genre_sur_id AS VARCHAR) NOT IN ('-1', '-2')
       AND bk.keyword_sur_id IS NOT NULL
+      AND CAST(bk.keyword_sur_id AS VARCHAR) NOT IN ('-1', '-2')
 ),
 
 term_year_genre_freq AS (
@@ -231,7 +241,7 @@ year_genre_corpus_stats AS (
         ygt.term_count,
         ygt.tf,
         COUNT(*) OVER (PARTITION BY ygt.keyword_sur_id) AS doc_freq,
-        (SELECT COUNT(DISTINCT CONCAT(CAST(release_year AS VARCHAR), '_', CAST(genre_sur_id AS VARCHAR))) 
+        (SELECT COUNT(DISTINCT CONCAT(release_year, '_', CAST(genre_sur_id AS VARCHAR))) 
          FROM year_genre_keyword_pairs) AS total_year_genres
     FROM year_genre_totals ygt
 ),
@@ -239,8 +249,8 @@ year_genre_corpus_stats AS (
 tf_idf_by_year_genre AS (
     SELECT 
         release_year,
-        genre_sur_id,
-        '-1' AS country_sur_id,
+        CAST(genre_sur_id AS VARCHAR) AS genre_sur_id,
+        'ALL' AS country_sur_id,
         keyword_sur_id,
         term_count AS total_keyword_by_group,
         ROUND(CAST(tf AS DECIMAL(10, 6)), 6) AS tf,
@@ -251,14 +261,13 @@ tf_idf_by_year_genre AS (
         AS DECIMAL(10, 6)), 6) AS idf,
         ROUND(CAST(
             tf * (LN((1.0 + total_year_genres) / (1.0 + doc_freq)) + 1.0) 
-        AS DECIMAL(10, 6)), 6) AS tf_idf,
-        'year_genre' AS aggregation_level
+        AS DECIMAL(10, 6)), 6) AS tf_idf
     FROM year_genre_corpus_stats
 ),
 
 year_country_keyword_pairs AS (
     SELECT 
-        EXTRACT(YEAR FROM d.full_date) AS release_year,
+        CAST(EXTRACT(YEAR FROM d.full_date) AS VARCHAR) AS release_year,
         bc.country_sur_id,
         bk.keyword_sur_id
     FROM {{ ref('bridge_movie_keyword') }} bk
@@ -269,8 +278,14 @@ year_country_keyword_pairs AS (
     LEFT JOIN {{ ref('dim_dates') }} d
         ON d.date_sur_id = m.release_date_sur_id
     WHERE m.release_date_sur_id IS NOT NULL
+      AND CAST(m.release_date_sur_id AS VARCHAR) NOT IN ('-1', '-2')
+      AND d.full_date IS NOT NULL
+      AND bk.movie_sur_id IS NOT NULL
+      AND CAST(bk.movie_sur_id AS VARCHAR) NOT IN ('-1', '-2')
       AND bc.country_sur_id IS NOT NULL
+      AND CAST(bc.country_sur_id AS VARCHAR) NOT IN ('-1', '-2')
       AND bk.keyword_sur_id IS NOT NULL
+      AND CAST(bk.keyword_sur_id AS VARCHAR) NOT IN ('-1', '-2')
 ),
 
 term_year_country_freq AS (
@@ -301,7 +316,7 @@ year_country_corpus_stats AS (
         yct.term_count,
         yct.tf,
         COUNT(*) OVER (PARTITION BY yct.keyword_sur_id) AS doc_freq,
-        (SELECT COUNT(DISTINCT CONCAT(CAST(release_year AS VARCHAR), '_', CAST(country_sur_id AS VARCHAR))) 
+        (SELECT COUNT(DISTINCT CONCAT(release_year, '_', CAST(country_sur_id AS VARCHAR))) 
          FROM year_country_keyword_pairs) AS total_year_countries
     FROM year_country_totals yct
 ),
@@ -309,8 +324,8 @@ year_country_corpus_stats AS (
 tf_idf_by_year_country AS (
     SELECT 
         release_year,
-        '-1' AS genre_sur_id,
-        country_sur_id,
+        'ALL' AS genre_sur_id,
+        CAST(country_sur_id AS VARCHAR) AS country_sur_id,
         keyword_sur_id,
         term_count AS total_keyword_by_group,
         ROUND(CAST(tf AS DECIMAL(10, 6)), 6) AS tf,
@@ -321,8 +336,7 @@ tf_idf_by_year_country AS (
         AS DECIMAL(10, 6)), 6) AS idf,
         ROUND(CAST(
             tf * (LN((1.0 + total_year_countries) / (1.0 + doc_freq)) + 1.0) 
-        AS DECIMAL(10, 6)), 6) AS tf_idf,
-        'year_country' AS aggregation_level
+        AS DECIMAL(10, 6)), 6) AS tf_idf
     FROM year_country_corpus_stats
 ),
 
@@ -336,9 +350,14 @@ genre_country_keyword_pairs AS (
         ON bk.movie_sur_id = bg.movie_sur_id
     JOIN {{ ref('bridge_movie_country') }} bc 
         ON bk.movie_sur_id = bc.movie_sur_id
-    WHERE bg.genre_sur_id IS NOT NULL
+    WHERE bk.movie_sur_id IS NOT NULL
+      AND CAST(bk.movie_sur_id AS VARCHAR) NOT IN ('-1', '-2')
+      AND bg.genre_sur_id IS NOT NULL
+      AND CAST(bg.genre_sur_id AS VARCHAR) NOT IN ('-1', '-2')
       AND bc.country_sur_id IS NOT NULL
+      AND CAST(bc.country_sur_id AS VARCHAR) NOT IN ('-1', '-2')
       AND bk.keyword_sur_id IS NOT NULL
+      AND CAST(bk.keyword_sur_id AS VARCHAR) NOT IN ('-1', '-2')
 ),
 
 term_genre_country_freq AS (
@@ -376,9 +395,9 @@ genre_country_corpus_stats AS (
 
 tf_idf_by_genre_country AS (
     SELECT 
-        -1 AS release_year, 
-        genre_sur_id,
-        country_sur_id,
+        'ALL' AS release_year, 
+        CAST(genre_sur_id AS VARCHAR) AS genre_sur_id,
+        CAST(country_sur_id AS VARCHAR) AS country_sur_id,
         keyword_sur_id,
         term_count AS total_keyword_by_group,
         ROUND(CAST(tf AS DECIMAL(10, 6)), 6) AS tf,
@@ -389,14 +408,13 @@ tf_idf_by_genre_country AS (
         AS DECIMAL(10, 6)), 6) AS idf,
         ROUND(CAST(
             tf * (LN((1.0 + total_genre_countries) / (1.0 + doc_freq)) + 1.0) 
-        AS DECIMAL(10, 6)), 6) AS tf_idf,
-        'genre_country' AS aggregation_level
+        AS DECIMAL(10, 6)), 6) AS tf_idf
     FROM genre_country_corpus_stats
 ),
 
 year_genre_country_keyword_pairs AS (
     SELECT 
-        EXTRACT(YEAR FROM d.full_date) AS release_year,
+        CAST(EXTRACT(YEAR FROM d.full_date) AS VARCHAR) AS release_year,
         bg.genre_sur_id,
         bc.country_sur_id,
         bk.keyword_sur_id
@@ -410,9 +428,16 @@ year_genre_country_keyword_pairs AS (
     LEFT JOIN {{ ref('dim_dates') }} d
         ON d.date_sur_id = m.release_date_sur_id
     WHERE m.release_date_sur_id IS NOT NULL
+      AND CAST(m.release_date_sur_id AS VARCHAR) NOT IN ('-1', '-2')
+      AND d.full_date IS NOT NULL
+      AND bk.movie_sur_id IS NOT NULL
+      AND CAST(bk.movie_sur_id AS VARCHAR) NOT IN ('-1', '-2')
       AND bg.genre_sur_id IS NOT NULL
+      AND CAST(bg.genre_sur_id AS VARCHAR) NOT IN ('-1', '-2')
       AND bc.country_sur_id IS NOT NULL
+      AND CAST(bc.country_sur_id AS VARCHAR) NOT IN ('-1', '-2')
       AND bk.keyword_sur_id IS NOT NULL
+      AND CAST(bk.keyword_sur_id AS VARCHAR) NOT IN ('-1', '-2')
 ),
 
 term_year_genre_country_freq AS (
@@ -446,7 +471,7 @@ year_genre_country_corpus_stats AS (
         ygct.term_count,
         ygct.tf,
         COUNT(*) OVER (PARTITION BY ygct.keyword_sur_id) AS doc_freq,
-        (SELECT COUNT(DISTINCT CONCAT(CAST(release_year AS VARCHAR), '_', CAST(genre_sur_id AS VARCHAR), '_', CAST(country_sur_id AS VARCHAR))) 
+        (SELECT COUNT(DISTINCT CONCAT(release_year, '_', CAST(genre_sur_id AS VARCHAR), '_', CAST(country_sur_id AS VARCHAR))) 
          FROM year_genre_country_keyword_pairs) AS total_year_genre_countries
     FROM year_genre_country_totals ygct
 ),
@@ -454,8 +479,8 @@ year_genre_country_corpus_stats AS (
 tf_idf_by_year_genre_country AS (
     SELECT 
         release_year,
-        genre_sur_id,
-        country_sur_id,
+        CAST(genre_sur_id AS VARCHAR) AS genre_sur_id,
+        CAST(country_sur_id AS VARCHAR) AS country_sur_id,
         keyword_sur_id,
         term_count AS total_keyword_by_group,
         ROUND(CAST(tf AS DECIMAL(10, 6)), 6) AS tf,
@@ -466,8 +491,7 @@ tf_idf_by_year_genre_country AS (
         AS DECIMAL(10, 6)), 6) AS idf,
         ROUND(CAST(
             tf * (LN((1.0 + total_year_genre_countries) / (1.0 + doc_freq)) + 1.0) 
-        AS DECIMAL(10, 6)), 6) AS tf_idf,
-        'year_genre_country' AS aggregation_level
+        AS DECIMAL(10, 6)), 6) AS tf_idf
     FROM year_genre_country_corpus_stats
 ),
 
@@ -477,7 +501,9 @@ global_keyword_pairs AS (
         keyword_sur_id
     FROM {{ ref('bridge_movie_keyword') }}
     WHERE movie_sur_id IS NOT NULL 
+      AND CAST(movie_sur_id AS VARCHAR) NOT IN ('-1', '-2')
       AND keyword_sur_id IS NOT NULL
+      AND CAST(keyword_sur_id AS VARCHAR) NOT IN ('-1', '-2')
 ),
 
 term_global_freq AS (
@@ -510,9 +536,9 @@ global_corpus_stats AS (
 
 tf_idf_global AS (
     SELECT
-        -1 AS release_year,
-        '-1' AS genre_sur_id,
-        '-1' AS country_sur_id, 
+        'ALL' AS release_year,
+        'ALL' AS genre_sur_id,
+        'ALL' AS country_sur_id, 
         keyword_sur_id,
         term_count AS total_keyword_by_group,
         ROUND(CAST(tf AS DECIMAL(10, 6)), 6) AS tf,
@@ -523,8 +549,7 @@ tf_idf_global AS (
         AS DECIMAL(10, 6)), 6) AS idf,
         ROUND(CAST(
             tf * (LN((1.0 + total_movies) / (1.0 + doc_freq)) + 1.0) 
-        AS DECIMAL(10, 6)), 6) AS tf_idf,
-        'none' AS aggregation_level
+        AS DECIMAL(10, 6)), 6) AS tf_idf
     FROM global_corpus_stats
 ),
 
@@ -547,7 +572,29 @@ all_level AS (
 )
 
 SELECT 
-    *,
-    {{dbt_utils.generate_surrogate_key(['aggregation_level', 'keyword_sur_id', 'release_year', 'genre_sur_id', 'country_sur_id']) }} AS fact_movie_keyword_tfidf_id,
-    CAST(CURRENT_TIMESTAMP AS TIMESTAMP(3)) AS calculated_at
-FROM all_level
+    a.release_year,
+    k.keyword,
+    a.total_keyword_by_group,
+    a.tf,
+    a.total_group_by_keyword,
+    a.total_group,
+    a.idf,
+    a.tf_idf,
+    CAST(CURRENT_TIMESTAMP AS TIMESTAMP(3)) AS calculated_at,
+    CASE 
+        WHEN a.country_sur_id = 'ALL' THEN 'ALL' 
+        ELSE c.country_name 
+    END AS country_name,
+        CASE 
+        WHEN a.genre_sur_id = 'ALL' THEN 'ALL' 
+        ELSE g.genre 
+    END AS genre
+FROM all_level a
+LEFT JOIN {{ ref('dim_genres') }} g
+    ON a.genre_sur_id = CAST(g.genre_sur_id AS VARCHAR)
+    AND a.genre_sur_id != 'ALL'
+LEFT JOIN {{ ref('dim_countries') }} c
+    ON a.country_sur_id = CAST(c.country_sur_id AS VARCHAR)
+    AND a.country_sur_id != 'ALL'
+LEFT JOIN {{ ref('dim_keywords') }} k
+    ON a.keyword_sur_id = k.keyword_sur_id

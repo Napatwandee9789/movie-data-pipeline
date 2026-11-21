@@ -16,7 +16,6 @@ WITH source_data AS
         CAST(backdrop_path AS VARCHAR) AS backdrop_path,
         TRY_CAST(NULLIF(TRIM(CAST(release_date AS VARCHAR)), '') AS DATE) AS release_date,
         keywords, -- did not unnest yet
-        credits,  -- did not unnest yet
         production_companies,  -- did not unnest yet
         year,
         month,

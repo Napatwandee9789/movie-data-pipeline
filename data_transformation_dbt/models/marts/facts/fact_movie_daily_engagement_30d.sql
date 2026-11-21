@@ -45,9 +45,9 @@ WITH
                 (year, month, day) IN (
                     {% for i in range(0, 1) %}
                         (
-                            '{{ (run_started_at - modules.datetime.timedelta(days=i)).strftime("%Y") }}',
-                            '{{ (run_started_at - modules.datetime.timedelta(days=i)).strftime("%m") }}',
-                            '{{ (run_started_at - modules.datetime.timedelta(days=i)).strftime("%d") }}'
+                            '{{ (run_started_at - modules.datetime.timedelta(days=i+1)).strftime("%Y") }}',
+                            '{{ (run_started_at - modules.datetime.timedelta(days=i+1)).strftime("%m") }}',
+                            '{{ (run_started_at - modules.datetime.timedelta(days=i+1)).strftime("%d") }}'
                         ){{ "," if not loop.last }})
                     {% endfor %}
         )
