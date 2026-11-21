@@ -217,13 +217,19 @@ def fetch_movies_for_window(
     return records_collected
 
 
-def upload_json_to_s3(payload: list[dict], bucket: str, object_key: str) -> None:
-    """Upload serialized JSON records directly into target S3 Data Lake path.
+def upload_json_to_s3(
+    payload: str, bucket: str, object_key: str, record_count: int
+) -> None:
+    """Upload serialized NDJSON string directly into target S3 Data Lake path.
 
     Args:
-        payload: List of movie entity dictionaries.
+        payload: Newline-delimited JSON (NDJSON) string containing serialized movie records.
         bucket: Target AWS S3 bucket name.
         object_key: Destination object key path within S3.
+        record_count: Total number of movie records contained in the payload for logging.
+
+    Raises:
+        botocore.exceptions.ClientError: If AWS S3 rejects the PutObject request.
     """
     try:
         s3_client.put_object(
@@ -234,7 +240,7 @@ def upload_json_to_s3(payload: list[dict], bucket: str, object_key: str) -> None
         )
         logger.info(
             "Successfully uploaded %s snapshot records to s3://%s/%s",
-            len(payload),
+            record_count,
             bucket,
             object_key,
         )
@@ -247,8 +253,8 @@ def lambda_handler(event, context):
     """Entry point orchestration for TMDB Daily Snapshot Fetcher.
 
     Splits the trailing 30-day lifecycle into two sub-windows (0-14 days and
-    15-30 days ago), extracts snapshot metrics from the Discover API, deduplicates
-    records, and persists the payload into S3.
+    15-30 days ago) anchored on the closed T-1 UTC date, extracts snapshot metrics
+    from the Discover API, deduplicates records, and persists the payload into S3.
 
     Args:
         event: Lambda invocation event dictionary. Optional override parameter:
@@ -259,7 +265,7 @@ def lambda_handler(event, context):
         Standard HTTP-compatible response dictionary with execution metrics.
 
     Sample Inbound Event:
-        {}  # Automated mode (defaults to current UTC date)
+        {}  # Automated mode (defaults to closed T-1 UTC date: today - 1)
         or
         {"snapshot_date": "2026-10-15"}  # Backfill / manual intervention
 
@@ -269,10 +275,12 @@ def lambda_handler(event, context):
             "body": "{\"status\": \"success\", \"snapshot_date\": \"2026-10-15\", ...}"
         }
     """
-    utc_now = datetime.now(timezone.utc)
+    # Anchor default snapshot date to the closed T-1 UTC day (today - 1) so scheduled
+    # runs at ~00:30 capture full end-of-day metrics and align partitions with daily_changes.
+    utc_yesterday = datetime.now(timezone.utc) - timedelta(days=1)
 
-    # Determine snapshot observation date (defaults to current UTC date)
-    snapshot_date_str = event.get("snapshot_date", utc_now.strftime("%Y-%m-%d"))
+    # Determine snapshot observation date (defaults to closed T-1 UTC date)
+    snapshot_date_str = event.get("snapshot_date", utc_yesterday.strftime("%Y-%m-%d"))
     snapshot_date = datetime.strptime(snapshot_date_str, "%Y-%m-%d").date()
 
     logger.info(
@@ -282,11 +290,11 @@ def lambda_handler(event, context):
     # -----------------------------------------------------------------------
     # Step 1: Define two distinct date windows to prevent 500-page overflow
     # -----------------------------------------------------------------------
-    # Window A: Recent releases (0 to 14 days ago)
+    # Window A: Recent releases (0 to 14 days ago relative to snapshot_date)
     window_a_start = (snapshot_date - timedelta(days=14)).strftime("%Y-%m-%d")
     window_a_end = snapshot_date.strftime("%Y-%m-%d")
 
-    # Window B: Maturing releases (15 to 30 days ago)
+    # Window B: Maturing releases (15 to 30 days ago relative to snapshot_date)
     window_b_start = (snapshot_date - timedelta(days=30)).strftime("%Y-%m-%d")
     window_b_end = (snapshot_date - timedelta(days=15)).strftime("%Y-%m-%d")
 
@@ -353,7 +361,12 @@ def lambda_handler(event, context):
             f"raw/movie_daily_snapshot/year={snapshot_date.year}/month={snapshot_date.month:02d}/day={snapshot_date.day:02d}/"
             f"movies_snapshot_{snapshot_date_str}.json"
         )
-        upload_json_to_s3(ndjson_final_payload, S3_BUCKET_NAME, s3_partition_key)
+        upload_json_to_s3(
+            ndjson_final_payload,
+            S3_BUCKET_NAME,
+            s3_partition_key,
+            len(final_payload),
+        )
 
     # Schema Blueprint of summary response dict:
     # {
@@ -379,3 +392,54 @@ def lambda_handler(event, context):
     logger.info("Snapshot ingestion completed successfully: %s", summary)
 
     return {"statusCode": 200, "body": json.dumps(summary)}
+
+
+# ===========================================================================
+# ARCHITECTURE & EXECUTION FLOW DIAGRAM
+# ===========================================================================
+#                      [Apache Airflow DAG (~00:30 Daily)]
+#                                  │
+#                                  ▼ (AWS Lambda Invoke API)
+#   ┌───────────────────────────────────────────────────────────────────────┐
+#   │ STEP 1: RESOLVE SNAPSHOT & SPLIT 30-DAY WINDOW (lambda_handler)       │
+#   │  • Anchor snapshot_date (default: UTC_NOW - 1d, or event override)    │
+#   │  • Split trailing 30 days into 2 sub-windows to avoid TMDB 500-page   │
+#   │    pagination cap (10,000 items max per query):                       │
+#   │      ├── Window A: [snapshot_date - 14d .. snapshot_date] (0-14d)     │
+#   │      └── Window B: [snapshot_date - 30d .. snapshot_date - 15d]       │
+#   └─────────────────────────────────┬─────────────────────────────────────┘
+#                                     │
+#                   ┌─────────────────┴─────────────────┐
+#                   ▼                                   ▼
+#   ┌───────────────────────────────┐   ┌───────────────────────────────────┐
+#   │ STEP 2A: WINDOW A EXTRACTION  │   │ STEP 2B: WINDOW B EXTRACTION      │
+#   │ fetch_movies_for_window()     │   │ fetch_movies_for_window()         │
+#   │                               │   │                                   │
+#   │ GET /3/discover/movie         │   │ GET /3/discover/movie             │
+#   │  • Range: S-14d to S          │   │  • Range: S-30d to S-15d          │
+#   │  • Paginate 1..N (cap <=500)  │   │  • Paginate 1..N (cap <=500)      │
+#   │  • Filter adult/video = false │   │  • Filter adult/video = false     │
+#   │  • Handle HTTP 429 + 50ms lag │   │  • Handle HTTP 429 + 50ms lag     │
+#   │  • Inject "snapshot_date": S  │   │  • Inject "snapshot_date": S      │
+#   └───────────────┬───────────────┘   └─────────────────┬─────────────────┘
+#                   │                                     │
+#                   └─────────────────┬───────────────────┘
+#                                     ▼
+#   ┌───────────────────────────────────────────────────────────────────────┐
+#   │ STEP 3: MERGE & DEDUPLICATE BY MOVIE_ID                               │
+#   │  • Combine records_window_a + records_window_b                        │
+#   │  • Deduplicate via unique_movies[movie_id] hash map                   │
+#   └─────────────────────────────────┬─────────────────────────────────────┘
+#                                     │
+#                                     ▼ (If final_payload is non-empty)
+#   ┌───────────────────────────────────────────────────────────────────────┐
+#   │ STEP 4: ATOMIC S3 SNAPSHOT SINK (upload_json_to_s3)                   │
+#   │                                                                       │
+#   │  • Serialize list of dicts into Newline Delimited JSON (NDJSON)       │
+#   │  • Target Hive-partitioned S3 key:                                    │
+#   │    raw/movie_daily_snapshot/year=YYYY/month=MM/day=DD/                │
+#   │    └── movies_snapshot_YYYY-MM-DD.json                                │
+#   │  • s3_client.put_object() ──► Return HTTP 200 + execution summary     │
+#   └───────────────────────────────────────────────────────────────────────┘
+#
+# ===========================================================================
