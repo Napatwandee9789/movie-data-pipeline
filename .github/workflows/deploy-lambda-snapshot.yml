@@ -1,19 +1,24 @@
 name: Deploy Snapshot Lambda On AWS Lambda
 
 on:
+  # ทำงานอัตโนมัติทุกครั้งที่มีการ push โค้ดขึ้น branch main
   push:
     branches:
-      - main  # สั่งให้ทำงานอัตโนมัติทุกครั้งที่มีการ push ขึ้น branch main
+      - main
+    # จำกัดให้รันเฉพาะเมื่อมีการแก้ไขไฟล์ในโฟลเดอร์ของ Daily Snapshot เท่านั้น
     paths:
       - 'fetcher_for_daily_snapshot/**'
 
 jobs:
   deploy-snapshot:
     runs-on: ubuntu-latest
+
     steps:
+      # 1. ดึงโค้ดล่าสุดจาก Repository ลงมาใน Runner ของ GitHub
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # 2. ยืนยันตัวตนเข้าสู่ระบบ AWS เพื่อขอสิทธิ์ใช้งาน ECR และ Lambda
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -21,22 +26,54 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      # 3. ล็อกอินเข้าสู่ Amazon ECR (ที่เก็บ Docker Image บน AWS)
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      # 4. สร้าง Docker Image จากโค้ด Daily Snapshot และอัปโหลดขึ้นไปเก็บไว้ใน ECR
       - name: Build, Tag, and Push Snapshot Image to ECR
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           REPOSITORY: movie-pipeline-lambda-snapshot
           IMAGE_TAG: latest
-        working-directory: ./fetcher_for_daily_snapshot  # โฟลเดอร์ของ daily snapshot
+        working-directory: ./fetcher_for_daily_snapshot  # เข้าไปทำงานในโฟลเดอร์ของ daily snapshot
         run: |
+          # Build Image สำหรับสถาปัตยกรรม linux/amd64 (ปิด provenance เพื่อป้องกันปัญหา Lambda อ่าน Manifest ไม่ออก)
           docker build --platform linux/amd64 --provenance=false -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
+          # อัปโหลด Image ขึ้นไปบน Amazon ECR
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
 
+      # 5. สั่งให้ AWS Lambda ดึง Docker Image ตัวล่าสุดจาก ECR ไปอัปเดตทับของเดิม
       - name: Update Snapshot Lambda Function Code
         run: |
           aws lambda update-function-code \
             --function-name movie-pipeline-lambda-snapshot \
             --image-uri ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/movie-pipeline-lambda-snapshot:latest
+
+# ==================================================================================
+#   CI/CD DEPLOYMENT ARCHITECTURE: SNAPSHOT LAMBDA (CONTAINER IMAGE)
+# ==================================================================================
+#
+#   [Developer] ──(git push)──▶ [GitHub Repo: movie-data-pipeline]
+#                                              │
+#                             (Changes detected in 'fetcher_for_daily_snapshot/**')
+#                                              │
+#                                              ▼
+#                                 [GitHub Actions Workflow]
+#                                              │
+#                                              ├──▶ 1. Authenticate with AWS & Amazon ECR
+#                                              │
+#                                              ├──▶ 2. Build Docker Image (linux/amd64)
+#                                              │
+#                                              ├──▶ 3. Push Image to Amazon ECR
+#                                              │       (movie-pipeline-lambda-snapshot:latest)
+#                                              │
+#                                              ▼
+#                        4. Update AWS Lambda Function with Latest Image
+#                                              │
+#                                              ▼
+#                         [AWS Lambda: movie-pipeline-lambda-snapshot]
+#                                     (Ready for invocation)
+#
+# ==================================================================================

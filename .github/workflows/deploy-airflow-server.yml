@@ -1,36 +1,128 @@
 name: Deploy Airflow Pipeline On AWS EC2
 
 on:
+  # ทำงานอัตโนมัติเมื่อมีการ Push โค้ดขึ้น Branch main
   push:
     branches:
-      - main 
+      - main
+    # จำกัดให้รันเฉพาะเมื่อมีการแก้ไขไฟล์ในโฟลเดอร์ที่กำหนด (ประหยัดโควตาและเวลา)
     paths:
       - 'airflow/**'
       - 'data_transformation_dbt/**'
+  # เพิ่มปุ่มให้สามารถกดสั่งรันด้วยตัวเอง (Manual) จากหน้า GitHub Actions ได้
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. ดึงโค้ดจาก Repository ลงมาใน Runner ของ GitHub
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # 2. ล็อกอินเข้าสู่ระบบ AWS เพื่อขอสิทธิ์ไปเช็กสถานะเครื่อง EC2
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # 3. เช็กสถานะของเครื่อง EC2 และดึง Public IP ล่าสุดของวันนั้น
+      - name: Check EC2 Status & Get Dynamic Public IP
+        id: check-ec2
+        run: |
+          # ถาม AWS ว่าตอนนี้เครื่อง EC2 อยู่ในสถานะไหน (เช่น running, stopped, pending)
+          STATE=$(aws ec2 describe-instances \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --query "Reservations[0].Instances[0].State.Name" \
+            --output text)
+
+          echo "EC2 current state: $STATE"
+
+          # ถ้าเครื่องไม่ได้เปิดอยู่ (ไม่ใช่ running) ให้ข้ามการ Deploy ไปแบบสีเขียว (ไม่ขึ้น Error)
+          # แล้วค่อยให้ @reboot ในเครื่อง EC2 ดึงโค้ดอัปเดตเองตอนเปิดเครื่องรอบถัดไป
+          if [ "$STATE" != "running" ]; then
+            echo "EC2 is not running. Skipping immediate deployment (will auto-deploy on next boot)."
+            echo "is_running=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # ถ้าเครื่องเปิดอยู่ ให้ดึงค่า Public IPv4 ล่าสุดออกมาเก็บไว้ในตัวแปร
+          PUBLIC_IP=$(aws ec2 describe-instances \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --query "Reservations[0].Instances[0].PublicIpAddress" \
+            --output text)
+
+          # ส่งค่าสถานะและ IP ล่าสุดออกไปให้ Step ถัดไปใช้งาน
+          echo "is_running=true" >> $GITHUB_OUTPUT
+          echo "ec2_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+
+      # 4. เชื่อมต่อ SSH เข้าไปอัปเดตโค้ดใน EC2 (ทำเฉพาะเมื่อ Step ก่อนหน้าเช็กแล้วว่าเครื่องเปิดอยู่)
       - name: Deploy to EC2 via SSH
+        if: steps.check-ec2.outputs.is_running == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_AIRFLOW_SERVER_HOST }}
+          # ใช้ IP ล่าสุดที่ดึงมาได้แบบ Dynamic แทนการล็อก IP ตายตัว
+          host: ${{ steps.check-ec2.outputs.ec2_ip }}
           username: ${{ secrets.EC2_AIRFLOW_SERVER_USER }}
           key: ${{ secrets.EC2_AIRFLOW_SERVER_SSH_KEY }}
           port: ${{ secrets.EC2_AIRFLOW_SERVER_PORT }}
           script: |
+            # เข้าไปยังโฟลเดอร์โปรเจกต์บนเครื่อง EC2
             cd ~/movie-data-pipeline
 
-            # 2. ดึงโค้ดล่าสุดจาก Git
+            # ดึงโค้ดเวอร์ชันล่าสุดจาก GitHub
             git pull origin main
 
-            # 3. เข้าโฟลเดอร์ airflow เพื่อสั่งอัปเดตระบบ
+            # เข้าไปยังโฟลเดอร์ที่เก็บไฟล์ docker-compose.yml ของ Airflow
             cd airflow
 
-            # 4. สั่ง build ใหม่เฉพาะกรณีที่มีการแก้ Dockerfile และสั่ง restart แบบ zero downtime สั้นๆ
+            # Build Image ใหม่ (เฉพาะส่วนที่แก้) และ Restart Container แบบกระทบระบบน้อยที่สุด
             docker compose up -d --build
+
+
+# ==================================================================================
+#   CI/CD DEPLOYMENT ARCHITECTURE (HYBRID: PUSH + SCHEDULED EC2 BOOT)
+# ==================================================================================
+#
+#   [1] Developer & GitHub Actions (Triggered on git push to main)
+#   --------------------------------------------------------------------------------
+#   [Developer] ──(git push)──▶ [GitHub Repo: movie-data-pipeline]
+#                                              │
+#                                              ▼
+#                                 [GitHub Actions Workflow]
+#                                              │
+#                                              ▼
+#                          (Query AWS: Is the EC2 instance running?)
+#                                              │
+#                       ┌──────────────────────┴──────────────────────┐
+#                       ▼                                             ▼
+#            [State: RUNNING (Awake)]                       [State: STOPPED (Asleep)]
+#                       │                                             │
+#                       ▼                                             ▼
+#           Fetch Today's Dynamic Public IP                 Skip Deployment (Exit 0 / Green)
+#                       │                                   *No forced boot / No failure*
+#                       ▼                                             │
+#        SSH to EC2 ──▶ git pull ──▶ docker compose up                │
+#                                                                     │
+#                                                                     │ (Wait for scheduled start)
+#   [2] AWS EC2 Instance (Triggered automatically on scheduled boot)  │
+#   ------------------------------------------------------------------▼-------------
+#   [AWS EventBridge] ──(Scheduled Start)──▶ [EC2 Instance Boots Up]
+#                                                      │
+#                                                      ▼
+#                                         [Crontab: @reboot Triggered]
+#                                                      │
+#                                                      ▼
+#                                      (Check Git: Any new commits?)
+#                                                      │
+#                               ┌──────────────────────┴──────────────────────┐
+#                               ▼                                             ▼
+#                   [New Code (Hash Mismatch)]                    [No Changes (Hash Match)]
+#                               │                                             │
+#                               ▼                                             ▼
+#              git pull ──▶ docker compose up                    Exit in 1s (Airflow untouched)
+#
+# ==================================================================================
