@@ -14,7 +14,7 @@ import os
 import time
 import boto3
 from botocore.exceptions import ClientError
-from dotenv import load_dotenv
+from dotenv import load_dotenvnd_date
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
