@@ -70,6 +70,7 @@ jobs:
           key: ${{ secrets.EC2_AIRFLOW_SERVER_SSH_KEY }}
           port: ${{ secrets.EC2_AIRFLOW_SERVER_PORT }}
           script: |
+            set -e
             # เข้าไปยังโฟลเดอร์โปรเจกต์บนเครื่อง EC2
             cd ~/movie-data-pipeline
 

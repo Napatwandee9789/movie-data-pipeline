@@ -3,6 +3,7 @@
 Orchestrates the asynchronous ingest loop across AWS Lambda and SQS, enforces
 safe worker completion buffer, and triggers dbt Core transformations on AWS Athena.
 """
+# เหนื่อยกับชัวิตก
 
 from datetime import datetime, timedelta
 import logging
