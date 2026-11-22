@@ -143,6 +143,13 @@ with DAG(
         # Snapshots execute atomically via single S3 put_object; safe to run concurrently with changes
         invocation_type="RequestResponse",
         aws_conn_id=None,
+        botocore_config={
+            "connect_timeout": 60,
+            "read_timeout": 300,
+            "retries": {
+                "max_attempts": 1,
+            },
+        },
     )
 
     # =======================================================================
