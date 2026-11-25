@@ -51,6 +51,9 @@ models:
           +table_type: hive            
           +format: parquet
           +tags: ["monthly_run"]
+          summary_engagement_metrics:
+                  +external_location: 's3://my-personal-movie-data-lake/gold/dashboard_serving/summary_engagement_metrics/'
+                  +partitioned_by: ['genre']
           summary_keyword_tf_idf:
                   +external_location: 's3://my-personal-movie-data-lake/gold/dashboard_serving/summary_keyword_tf_idf/'
                   +partitioned_by: ['genre']
