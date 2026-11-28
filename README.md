@@ -49,7 +49,8 @@
 
 ## 2. แผนภาพสถาปัตยกรรมระบบ (Architecture Flow)
 
-<img width="1920" height="1080" alt="DAG (4)" src="https://github.com/user-attachments/assets/9ed79be0-e597-45f7-9e03-d0d4c8a5b6e1" />
+<img width="1920" height="1080" alt="CICD Deployment (3)" src="https://github.com/user-attachments/assets/ec127f3e-ca63-4dc0-b8e3-f4d48a71fc60" />
+
 
 
 Data Pipeline นี้บริหารจัดการและควบคุมลำดับการทำงานทั้งหมดด้วย **Apache Airflow [B]** ซึ่งถูก Deploy และทำงานอยู่บน **AWS EC2 [A]** ในรูปแบบ Docker Container โดยทำหน้าที่เป็น Workflow Orchestrator หลักในการตั้งเวลาการทำงาน จัดการ Dependencies เชื่อมโยงระบบ Serverless Ingestion และสั่งรัน dbt Core เพื่อประมวลผลข้อมูลลงสู่ Data Lakehouse[cite: 6]
