@@ -58,8 +58,8 @@ Data Pipeline นี้บริหารจัดการและควบค
 ---
 
 ### การบริหารจัดการต้นทุน (Cost Optimization)
-* **Scheduled Compute Management (AWS EventBridge [L]):** ตั้งตารางเวลาสั่งเปิดและปิดเครื่อง **AWS EC2 [A]** (Start / Stop Schedule) อัตโนมัติตามรอบการทำงานของ Pipeline เพื่อหลีกเลี่ยงการเปิดเซิร์ฟเวอร์ทิ้งไว้โดยไม่มีการใช้งาน
-* **Serverless Execution (AWS Lambda [C, E, F]):** เลือกใช้สถาปัตยกรรมแบบ Serverless ในส่วนการดึงข้อมูล ทำให้ไม่ต้องเสียค่าเช่าเซิร์ฟเวอร์ค้างไว้ตลอดเวลา โดยระบบคิดค่าบริการตามหน่วยประมวลผล (vCPU/Memory) และระยะเวลาที่รันจริงเท่านั้น ซึ่งจากการรันงานจริงรายวันต่อเนื่องเกือบ 1 เดือน ค่าใช้จ่ายในส่วนของ Lambda ยังอยู่ที่ **$0** (อยู่ในโควตา Free Tier ของ AWS)
+* **Scheduled Compute Management (AWS EventBridge [L]):** ตั้งตารางเวลาสั่งเปิดและปิดเครื่อง **AWS EC2 [A]** อัตโนมัติตามรอบการทำงานของ Pipeline เพื่อหลีกเลี่ยงการเปิดเซิร์ฟเวอร์ทิ้งไว้โดยไม่มีการใช้งาน
+* **Serverless Execution (AWS Lambda [C, E, F]):** เลือกใช้สถาปัตยกรรมแบบ Serverless สำหรับการดึงข้อมูล ทำให้ไม่ต้องเปิดเซิร์ฟเวอร์ทิ้งไว้ตลอดเวลา โดยระบบจะคิดค่าบริการตามจำนวนครั้งที่เรียกใช้และระยะเวลาการประมวลผลจริงเท่านั้น (GB-seconds) จากการรัน Pipeline รายวันต่อเนื่องเกือบ 1 เดือน พบว่ามีค่าใช้จ่ายในส่วนของ Lambda อยู่ที่ **$0** เนื่องจากการใช้งานยังอยู่ในโควตา **AWS Always Free Tier** (ฟรี 1,000,000 Requests และ 400,000 GB-seconds ต่อเดือน; หากใช้งานเกินโควตาจะคิดค่าบริการเริ่มต้นเพียง $0.20 ต่อ 1 ล้าน Requests และ $0.0000166667 ต่อ GB-second)
 * **Conditional Monthly Processing (Task 5 & Task 6):** ใช้ Branching Logic ตรวจสอบวันแรกของเดือน เพื่อข้ามการรันโมเดลระดับเดือนในวันปกติ ช่วยลดปริมาณการสแกนข้อมูลและค่าใช้จ่ายในการ Query ของ **AWS Athena [I]**[cite: 6]
 
 ---
@@ -118,8 +118,8 @@ Data Pipeline นี้บริหารจัดการและควบค
 
 | Engineering Challenge | The Bottleneck / Failure Mode | Architectural Solution | Trade-off & Mitigation |
 |---|---|---|---|
-| **500-Page API Limit** | Endpoint `/discover/movie` จำกัดการดึงสูงสุด 500 หน้า เสี่ยงเกิด Data Loss ช่วงที่มีภาพยนตร์เข้าฉายพร้อมกันจำนวนมาก | **Window Splitting Strategy:** ซอยช่วงเวลาค้นหาเป็น 2 กรอบ: `0–14 วัน` และ `15–30 วัน` แล้วนำมารวมกันและ Deduplicate ด้วย `movie_id` | **Trade-off:** เพิ่มจำนวน API Requests เล็กน้อย แต่การันตี Data Completeness 100% |
-| **Ingestion Bottleneck** | ข้อมูล Daily Changes มีหลายหลักหลายพัน หากใช้ Worker ตัวเดียวดึงแบบ Sequential จะใช้เวลานานกว่า 30 นาที | **Producer-Consumer Pattern:** ใช้ AWS Lambda รวบรวม Movie IDs ส่งเข้า Amazon SQS เพื่อให้ Lambda Worker Pool ดึงข้อมูลแบบขนาน (Parallel) | **Trade-off:** มี Throughput เพิ่มขึ้นชั่วขณะ แต่ตัดเวลา Ingestion ให้เสร็จสิ้นภายในไม่กี่นาที |
+| **500-Page API Limit** | ข้อมูล Daily Snapshot มีการใช้ Endpoint `/discover/movie` เพื่อดึงข้อมูล ซึ่งจำกัดการดึงสูงสุด 500 หน้า เสี่ยงเกิด Data Loss ช่วงที่มีภาพยนตร์เข้าฉายพร้อมกันจำนวนมาก | **Window Splitting Strategy:** ซอยช่วงเวลาค้นหาเป็น 2 กรอบ: `0–14 วัน` และ `15–30 วัน` แล้วนำมารวมกันและ Deduplicate ด้วย `movie_id` | **Trade-off:** เพิ่มจำนวน API Requests เล็กน้อย แต่การันตี Data Completeness 100% |
+| **Ingestion Bottleneck** | ข้อมูล Daily Changes มีหลักพัน - หลักหมื่นเรื่อง หากใช้ Worker ตัวเดียวดึงแบบ Sequential จะใช้เวลานานกว่า 30 นาที และเสี่ยงชน **Lambda Timeout** จนถูกตัดกลางคัน ทำให้ข้อมูลที่ดึงค้างใน RAM หายและ SQS เด้งซ้ำทั้ง batch | **Producer-Consumer Pattern:** ใช้ AWS Lambda รวบรวม Movie IDs ส่งเข้า Amazon SQS เพื่อให้ Lambda Worker Pool ดึงข้อมูลแบบขนาน (Parallel) | **Trade-off:** มี Throughput เพิ่มขึ้นชั่วขณะทำให้ลดโอกาสชน Timeout แต่ต้องคุม Batch Size ต่อ Message, Rate Limit ของ TMDB รวมถึงออกแบบกระบวนการปลายทางให้รองรับการประมวลผลซ้ำโดยไม่เกิดข้อมูลซ้ำซ้อน (Idempotency) |
 | **Barrier Synchronization** | Lambda Workers รันแบบ Async กระจายตัวอิสระ ทำให้ Airflow ไม่ทราบเวลาที่การประมวลผลเสร็จสิ้นแน่นอน | **7-Minute Synchronization Delay:** กำหนด Static Delay 7 นาทีใน Airflow (อ้างอิงจากเวลาทำงานปกติไม่เกิน 5 นาที + เผื่อ Safety Buffer 2 นาที) | **Trade-off:** ต้องหน่วงเวลารอ 2 นาที แต่ตัดความเสี่ยง Partial Data Loading ก่อนเริ่ม dbt |
 | **Server Memory Spikes** | Docker Compose บน EC2 รัน Airflow เจอ OOM (Out-of-Memory) จน OS สั่งปิดโปรเซส | **OS Swap Memory Tuning:** จัดสรร 4GB Swap Space บน Ubuntu Host เพื่อรับโหลดพีกชั่วขณะ | **Trade-off:** ดิสก์ I/O ช้ากว่า RAM แต่ระบบเสถียร 100% โดยไม่ต้องจ่ายค่าเครื่องแพงขึ้น |
 
@@ -129,12 +129,12 @@ Data Pipeline นี้บริหารจัดการและควบค
 
 | Optimization Technique | Layer | Implementation Details | Quantitative / Technical Impact |
 |---|---|---|---|
-| **Hive-style Partitioning** | Storage (S3) | จัดโครงสร้าง Path เป็น `year=.../month=.../day=...` ใน Glue Catalog | **ลด Data Scanned > 90%** ใน Athena เพราะอ่านเฉพาะโฟลเดอร์ของวันนั้น ข้ามข้อมูลเก่าทั้งหมด |
-| **Strict NDJSON Ingestion** | Ingestion | ข้อมูลดิบใน `raw/` เก็บเป็น Newline Delimited JSON (NDJSON) เท่านั้น | รองรับ **Line-by-Line Streaming** ขจัด Memory Overhead บน Athena Worker จากการโหลด Root JSON Array |
+| **Hive-style Partitioning** | Raw Storage (S3) | จัดโครงสร้าง Path ของข้อมูลดิบที่นำเข้ารายวันเป็น `year=.../month=.../day=...` และลงทะเบียนใน Glue Catalog | **ลด Data Scanned ได้ ~87.5%** ใน Athena (จาก 98.11 MB เหลือ 12.27 MB จากการทดสอบ Partition Pruning) โดยอ่านเฉพาะโฟลเดอร์ของวันนั้น |
 | **Parallel Processing via SQS** | Ingestion | ใช้ SQS คั่นกลางระหว่าง Producer และ Worker เพื่อทำ Parallel Scaling | ลดระยะเวลา Ingestion จากเดิม **30+ นาที เหลือไม่กี่นาที** รองรับปริมาณงานที่เพิ่มขึ้นได้ยืดหยุ่น |
-| **Pre-unnested Bridges** | Data Modeling | แตก Nested Arrays (Cast, Crew, Companies, Genres) เป็น Bridge Tables ล่วงหน้า | ไม่มีภาระจากการ `CROSS JOIN UNNEST()` สด ๆ ทำให้ Dashboard Query ตอบสนองในระดับ Milliseconds |
+| **Pre-unnested Bridges** | Data Modeling | แตก Nested Arrays (Companies, Genres) เป็น Bridge Tables ล่วงหน้า | ไม่มีภาระจากการ `CROSS JOIN UNNEST()` สด ๆ ทำให้ Dashboard Query ตอบสนองในระดับ Milliseconds |
 | **Incremental Merge** | Transformation (dbt) | ใช้กลยุทธ์ `incremental` ร่วมกับ `merge` ในโมเดลส่วนใหญ่ | ประมวลผลและเขียนเฉพาะ Delta Records ลดทั้งเวลาประมวลผลและค่าเขียนไฟล์บน S3 |
-| **Analytical Pre-computation** | Analytics | คำนวณ Smooth TF-IDF (8 ระดับมิติ) และ Materialize ลงตาราง Fact ล่วงหน้า | ลดภาระการคำนวณ Text Mining จากหลายนาทีบน BI ให้เรียกใช้งานได้ทันที |
+| **Analytical Pre-computation** | Analytics (Mart) | คำนวณ Smooth TF-IDF (8 ระดับมิติ) และ Materialize ลงตาราง Fact ล่วงหน้า | ลดภาระการคำนวณ Text Mining จากหลายนาทีบน BI ให้เรียกใช้งานได้ทันที |
+| **Monthly Pre-aggregation** | Serving Layer | ดึงข้อมูลจาก Mart Layer มาทำ Pre-aggregation ให้อยู่ในรูปพร้อมแสดงผลบน Dashboard โดยคำนวณใหม่ทุก 1 เดือน | ลดภาระการประมวลผลและ Query Latency ขณะเปิด Dashboard พร้อมประหยัดต้นทุน Compute จากการคำนวณซ้ำรายวัน |
 | **OS Memory Swap** | Orchestration | จัดสรร 4GB Swap Space บนโฮสต์ EC2 | ป้องกัน Linux OOM Killer ปิดการทำงานของ Airflow Scheduler/Worker ระหว่าง Memory Spikes |
 
 ---
