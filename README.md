@@ -49,6 +49,9 @@
 
 ## 2. แผนภาพสถาปัตยกรรมระบบ (Architecture Flow)
 
+<img width="1299" height="961" alt="CICD Deployment (5)" src="https://github.com/user-attachments/assets/57b8270c-b107-4836-a1dc-6d061bf3f792" />
+
+
 Data Pipeline นี้บริหารจัดการและควบคุมลำดับการทำงานทั้งหมดด้วย **Apache Airflow \[B\]** ซึ่งถูก Deploy และทำงานอยู่บน **AWS EC2 \[A\]** ในรูปแบบ Docker Container โดยทำหน้าที่เป็น Workflow Orchestrator หลักในการตั้งเวลาการทำงาน จัดการ Dependencies เชื่อมโยงระบบ Serverless Ingestion และสั่งรัน dbt Core เพื่อประมวลผลข้อมูลลงสู่ Data Lakehouse
 
 ### การบริหารจัดการต้นทุน (Cost Optimization)
@@ -135,6 +138,9 @@ Data Pipeline นี้บริหารจัดการและควบค
 ## 5. แบบจำลองข้อมูลระดับ Marts (Dimensional Data Model)
 
 สถาปัตยกรรมข้อมูลถูกออกแบบตามหลักการ **Dimensional Modeling (Star Schema with Bridge Tables)** ผ่าน `dbt-athena` โดยอิงตามแนวคิดของ **Ralph Kimball** เพื่อรองรับการวิเคราะห์ข้อมูลภาพยนตร์เชิงลึกที่มีความสัมพันธ์แบบกลุ่มหลายค่า (Many-to-Many Relationships)
+
+<img width="1822" height="1014" alt="Untitled (31)" src="https://github.com/user-attachments/assets/443f0604-52e7-411e-b0fe-6e7cccf79644" />
+
 
 ### ทำไมต้องใช้ Bridge Tables ใน Data Warehouse?
 
@@ -387,7 +393,8 @@ The system follows a **Decoupled Storage & Compute** design on AWS—utilizing A
 
 ## 2. Architecture Flow
 
-<img width="1299" height="961" alt="CICD Deployment (5)" src="https://github.com/user-attachments/assets/3e13a0a5-0974-494c-8a34-f15e441d9c4f" />
+<img width="1299" height="961" alt="CICD Deployment (5)" src="https://github.com/user-attachments/assets/9832b7d8-fae2-4871-bb77-38b76a2137bc" />
+
 
 The entire data pipeline is managed and orchestrated by **Apache Airflow [B]**, deployed as a Docker container on **AWS EC2 [A]**. Airflow serves as the central workflow orchestrator—scheduling runs, managing task dependencies, triggering serverless ingestion, and executing dbt Core models into the Data Lakehouse.
 
@@ -477,7 +484,8 @@ The entire data pipeline is managed and orchestrated by **Apache Airflow [B]**, 
 
 ## 5. Dimensional Data Model (Marts Layer)
 
-<img width="1822" height="1014" alt="Untitled (31)" src="https://github.com/user-attachments/assets/f9d17427-35ad-4fc9-b704-2b294598d968" />
+<img width="1822" height="1014" alt="Untitled (31)" src="https://github.com/user-attachments/assets/872b7fc4-a17f-49b7-9014-5e16c87a757e" />
+
 
 The data warehouse is modeled following **Dimensional Modeling (Star Schema with Bridge Tables)** principles via `dbt-athena`, grounded in **Ralph Kimball's** methodology to support complex analytical queries across Many-to-Many (M:N) movie attributes.
 
