@@ -141,7 +141,8 @@ Data Pipeline นี้บริหารจัดการและควบค
 
 ## 5. แบบจำลองข้อมูลระดับ Marts (Dimensional Data Model)
 
-<img width="2265" height="1503" alt="Untitled (29)" src="https://github.com/user-attachments/assets/016ae1eb-bc21-4766-a7d8-098471f2ab6e" />
+<img width="1822" height="1014" alt="Untitled (31)" src="https://github.com/user-attachments/assets/f9d17427-35ad-4fc9-b704-2b294598d968" />
+
 
 สถาปัตยกรรมข้อมูลถูกออกแบบตามหลักการ **Dimensional Modeling (Star Schema with Bridge Tables)** ผ่าน `dbt-athena` โดยอิงตามแนวคิดของ **Ralph Kimball** เพื่อรองรับการวิเคราะห์ข้อมูลภาพยนตร์เชิงลึกที่มีความสัมพันธ์แบบกลุ่มหลายค่า (Many-to-Many Relationships)
 
