@@ -36,7 +36,7 @@
 
 ## 1. ที่มาและเป้าหมาย (Motivation & Objective)
 
-ระบบ Automated Data Lakehouse ที่พัฒนาขึ้นโดยใช้สถาปัตยกรรมแบบ Event-Driven และ ELT Pipeline สำหรับดึงข้อมูล แปลงข้อมูล และสร้างแบบจำลองข้อมูลภาพยนตร์จาก TMDB API เพื่อรองรับการวิเคราะห์ข้อมูลใน 3 มิติหลัก ได้แก่ การวิเคราะห์ผลตอบแทนทางการเงิน (Financial ROI) การติดตามแนวโน้มความนิยมของภาพยนตร์ในช่วง 30 วันแรกหลังเข้าฉาย (30-Day Theatrical Trajectory) และการวิเคราะห์ประเด็นเนื้อหาที่โดดเด่นผ่านการคำนวณ TF-IDF ในระดับ Keyword (TF-IDF Keyword Analysis)
+ระบบ Automated Data Lakehouse ที่พัฒนาขึ้นโดยใช้สถาปัตยกรรมแบบ Event-Driven และ ELT Pipeline สำหรับดึงข้อมูล แปลงข้อมูล และสร้างแบบจำลองข้อมูลภาพยนตร์จาก TMDB API เพื่อรองรับการวิเคราะห์ข้อมูลใน 3 มิติหลัก ได้แก่ การวิเคราะห์ผลประกอบการทางการเงินและรายได้ Box Office (Financial & Box Office Performance) ครอบคลุมความสามารถในการทำกำไร การกระจายตัวของรายได้ ช่วงเวลาการเข้าฉายตามฤดูกาล และตลาดภาพยนตร์ระดับโลก การวิเคราะห์เชิงลึกด้านแก่นเรื่องและประเด็นเนื้อหา (Narrative & Thematic Insights) เพื่อติดตามวิวัฒนาการความถี่ของ Keyword กระแสหลักและค้นหาเอกลักษณ์เฉพาะตัวของแต่ละประเภทภาพยนตร์ผ่านการคำนวณ TF-IDF และ การวิเคราะห์การมีส่วนร่วมและพฤติกรรมผู้ชมในช่วง 30 วันแรกหลังเข้าฉาย (30-Day Movie Engagement & Audience Behavior Analytics) เพื่อติดตามแรงส่งความนิยม การเติบโตของยอดโหวตสะสม การทรงตัวของคะแนนรีวิว และการลดลงของกระแสความสนใจ (Hype Decay)
 
 ระบบออกแบบตามแนวคิด Decoupled Storage & Compute บน AWS โดยใช้ Amazon S3 เป็นพื้นที่จัดเก็บข้อมูล, AWS Glue Data Catalog สำหรับจัดการ Metadata, Amazon Athena สำหรับการ Query ข้อมูล และ dbt Core สำหรับการแปลงและสร้างแบบจำลองข้อมูล พร้อมจัดการลำดับการทำงานของ Pipeline ด้วย Apache Airflow และใช้ GitHub Actions สำหรับทำ Continuous Deployment (CD) โดยอัตโนมัติ
 
@@ -133,7 +133,6 @@ Data Pipeline นี้บริหารจัดการและควบค
 | **Parallel Processing via SQS** | Ingestion | ใช้ SQS คั่นกลางระหว่าง Producer และ Worker เพื่อทำ Parallel Scaling | ลดระยะเวลา Ingestion จากเดิม **30+ นาที เหลือไม่กี่นาที** รองรับปริมาณงานที่เพิ่มขึ้นได้ยืดหยุ่น |
 | **Pre-unnested Bridges** | Data Modeling | แตก Nested Arrays (Companies, Genres) เป็น Bridge Tables ล่วงหน้า | ไม่มีภาระจากการ `CROSS JOIN UNNEST()` สด ๆ ทำให้ Dashboard Query ตอบสนองในระดับ Milliseconds |
 | **Incremental Merge** | Transformation (dbt) | ใช้กลยุทธ์ `incremental` ร่วมกับ `merge` ในโมเดลส่วนใหญ่ | ประมวลผลและเขียนเฉพาะ Delta Records ลดทั้งเวลาประมวลผลและค่าเขียนไฟล์บน S3 |
-| **Analytical Pre-computation** | Analytics (Mart) | คำนวณ Smooth TF-IDF (8 ระดับมิติ) และ Materialize ลงตาราง Fact ล่วงหน้า | ลดภาระการคำนวณ Text Mining จากหลายนาทีบน BI ให้เรียกใช้งานได้ทันที |
 | **Monthly Pre-aggregation** | Serving Layer | ดึงข้อมูลจาก Mart Layer มาทำ Pre-aggregation ให้อยู่ในรูปพร้อมแสดงผลบน Dashboard โดยคำนวณใหม่ทุก 1 เดือน | ลดภาระการประมวลผลและ Query Latency ขณะเปิด Dashboard พร้อมประหยัดต้นทุน Compute จากการคำนวณซ้ำรายวัน |
 | **OS Memory Swap** | Orchestration | จัดสรร 4GB Swap Space บนโฮสต์ EC2 | ป้องกัน Linux OOM Killer ปิดการทำงานของ Airflow Scheduler/Worker ระหว่าง Memory Spikes |
 
@@ -146,7 +145,7 @@ Data Pipeline นี้บริหารจัดการและควบค
 สถาปัตยกรรมข้อมูลถูกออกแบบตามหลักการ **Dimensional Modeling (Star Schema with Bridge Tables)** ผ่าน `dbt-athena` โดยอิงตามแนวคิดของ **Ralph Kimball** เพื่อรองรับการวิเคราะห์ข้อมูลภาพยนตร์เชิงลึกที่มีความสัมพันธ์แบบกลุ่มหลายค่า (Many-to-Many Relationships)
 
 ### ทำไมต้องใช้ Bridge Tables ใน Data Warehouse?
-ตามธรรมชาติของข้อมูลภาพยนตร์ ภาพยนตร์ 1 เรื่องไม่ได้มีเพียงค่าเดียวในแต่ละมิติ เช่น มีได้หลายแนวภาพยนตร์ (Genres), ผลิตโดยหลายสตูดิโอ (Companies), มีนักแสดงและทีมงานหลายคน (Cast & Crew) พร้อมบทบาทที่ต่างกัน และมีหลายคีย์เวิร์ดบ่งบอกธีม (Keywords)
+ตามธรรมชาติของข้อมูลภาพยนตร์ ภาพยนตร์ 1 เรื่องไม่ได้มีเพียงค่าเดียวในแต่ละมิติ เช่น มีได้หลายแนวภาพยนตร์ (Genres), ร่วมทุนผลิตจากหลายประเทศ, และมีหลายคีย์เวิร์ดบ่งบอกธีม (Keywords)
 
 หากออกแบบเป็น Star Schema แบบแบนราบ (Denormalization) โดยไม่ใช้ Bridge Table จะก่อให้เกิดปัญหาหลัก 2 ประการ:
 1. **Fact / Dimension Explosion:** เกิดแถวข้อมูลซ้ำซ้อนมหาศาล ทำให้ตารางบวม และเสี่ยงต่อการเกิดปัญหา Double Counting เมื่อรวมยอดสถิติ (Aggregations)
@@ -161,15 +160,12 @@ Data Pipeline นี้บริหารจัดการและควบค
 | Table Name | Layer Type | Grain (ระดับความละเอียดของข้อมูล) | Key Columns & Highlight Features |
 |---|---|---|---|
 | `dim_movies` | Dimension | 1 แถว ต่อ 1 ภาพยนตร์ | Surrogate Key (`movie_sur_id`), ตัวเลขการเงิน (Profit, ROI, Revenue Multiplier) |
-| `dim_persons` | Dimension | 1 แถว ต่อ 1 บุคคล (นักแสดง/ผู้กำกับ) | Surrogate Key (`person_sur_id`), กรองข้อมูลโปรไฟล์รูปภาพที่ดีที่สุด |
-| `dim_companies` | Dimension | 1 แถว ต่อ 1 ค่าย/สตูดิโอผู้ผลิต | Surrogate Key (`company_sur_id`), โลโก้สตูดิโอ |
 | `dim_genres` | Dimension | 1 แถว ต่อ 1 แนวภาพยนตร์ | รองรับ Fallback Default: `-1: None`, `-2: Invalid` |
 | `dim_keywords` | Dimension | 1 แถว ต่อ 1 คำสำคัญ (Keyword) | `merge_update_columns = []` เพื่อการทำงานแบบ Insert-only |
 | `dim_dates` | Dimension | 1 แถว ต่อ 1 วันในปฏิทิน | Programmatic Generation (2016–2030) ไม่ต้องพึ่งพาไฟล์ CSV ภายนอก |
 | `dim_countries` | Dimension | 1 แถว ต่อ 1 ประเทศ | ISO-3166-1 Key พร้อมค่า Default `-1` และ `-2` |
 | `bridge_movie_*` | Bridge (M:N) | 1 แถว ต่อ 1 คู่ความสัมพันธ์ | Composite Surrogate Keys, ตัดความซ้ำซ้อนด้วย `UNION`, Insert-only Merge |
-| `fact_movie_daily_engagement_100d` | Fact (Periodic) | 1 ภาพยนตร์ ต่อ 1 วันที่วัดผล | **Partitioned by `days_since_release`** รองรับ Retention Curve Analysis |
-| `fact_movie_keyword_tfidf` | Fact (Analytical) | 1 คำค้นหา ต่อ 1 Slice การวิเคราะห์ | **Partitioned by `aggregation_level`**, Materialize ค่า Smooth TF-IDF ครบทั้ง 8 ระดับ |
+| `fact_movie_daily_engagement_30d` | Fact (Periodic) | 1 ภาพยนตร์ ต่อ 1 วันที่วัดผล | **Partitioned by `days_since_release`** รองรับ Retention Curve Analysis |
 
 > 📖 **Reference:** ศึกษาแนวคิดและเทคนิคการจัดการ Multivalued Dimensions เพิ่มเติมได้ที่: [Kimball Group - Multivalued Dimensions and Bridge Tables](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/multivalued-dimension-bridge-table/)
 
