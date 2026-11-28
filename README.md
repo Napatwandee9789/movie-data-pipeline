@@ -30,7 +30,7 @@
 
 ## TH-Version
 
-ระบบ Data Lakehouse แบบ Event-Driven ELT Pipeline บนสถาปัตยกรรม Serverless และ Container ดึงข้อมูลภาพยนตร์จาก TMDB API จัดเก็บลง AWS S3 แปลงข้อมูลสู่ Dimensional Model (Star Schema) บน AWS Athena ด้วย dbt Core ควบคุมการทำงานอัตโนมัติด้วย Apache Airflow บน AWS EC2 พร้อมระบบ Continuous Deployment (CD) ผ่าน GitHub Actions
+ระบบ Data Lakehouse แบบ Event-Driven ELT Pipeline บนสถาปัตยกรรม Serverless และ Container ดึงข้อมูลภาพยนตร์จาก TMDB API จัดเก็บลง AWS S3 แปลงข้อมูลเป็น Dimensional Model (Star Schema) บน AWS Athena ด้วย dbt Core ควบคุมการทำงานอัตโนมัติด้วย Apache Airflow บน AWS EC2 พร้อมระบบ Continuous Deployment (CD) ผ่าน GitHub Actions
 
 ---
 
@@ -43,7 +43,7 @@
 * **ปัญหาทางธุรกิจ:** การลงทุนในอุตสาหกรรมภาพยนตร์มีความเสี่ยงสูง การตัดสินใจลงทุนหรือพัฒนาโครงการภาพยนตร์จึงจำเป็นต้องอาศัยข้อมูลประกอบมากกว่าการพิจารณาจากสัญชาตญาณหรือรายได้รวมหลังภาพยนตร์ออกฉายจบเพียงอย่างเดียว โดยยังมีประเด็นสำคัญที่สามารถนำข้อมูลมาวิเคราะห์เพื่อสนับสนุนการตัดสินใจได้ ได้แก่
 - แนวโน้มความนิยม: ขาดเครื่องมือที่ช่วยติดตามและเปรียบเทียบแนวโน้มความนิยมของภาพยนตร์ในช่วง 30 วันแรกหลังเข้าฉาย เพื่อให้เห็นทิศทางความนิยมในช่วงเวลาสำคัญของการฉาย
 - ประเด็นเนื้อหาภาพยนตร์: ขาดมุมมองในการวิเคราะห์ว่าในแต่ละปี ประเภทภาพยนตร์ หรือประเทศ มีประเด็นและ Keyword ใดที่โดดเด่นหรือถูกนำมาใช้บ่อย ซึ่งอาจช่วยให้ผู้ผลิตมองเห็นแนวโน้มของเนื้อหาที่ได้รับความนิยม รวมถึงค้นหาแนวทางสร้างสรรค์เนื้อหาที่แตกต่างจากสิ่งที่มีอยู่ในตลาด
-* **เป้าหมายเชิงวิศวกรรม:** ออกแบบและพัฒนา Lakehouse Architecture ที่มีความเสถียร รองรับการขยายตัว (Scalable) และสามารถควบคุมต้นทุนการประมวลผลบนคลาวด์ได้อย่างเหมาะสม โดยใช้สถาปัตยกรรมแบบ Decoupled Storage & Compute เพื่อแยกส่วนการจัดเก็บข้อมูลและการประมวลผลออกจากกัน พร้อมพัฒนา ELT Pipeline ที่ทำงานโดยอัตโนมัติผ่าน Apache Airflow และ GitHub Actions เพื่อจัดเตรียมข้อมูลให้อยู่ในรูปแบบพร้อมใช้งานสำหรับการวิเคราะห์ (Analytics-Ready Data) และนำไปแสดงผลผ่าน BI Dashboard เพื่อสนับสนุนการวิเคราะห์ผลตอบแทนทางการเงิน แนวโน้มความนิยมของภาพยนตร์ และการค้นหาประเด็นเนื้อหาที่โดดเด่นซึ่งสามารถนำไปต่อยอดเป็นแนวคิดในการพัฒนาภาพยนตร์เรื่องใหม่ได้
+* **เป้าหมายเชิงวิศวกรรม:** ออกแบบและพัฒนา Lakehouse Architecture ที่มีความเสถียร รองรับการขยายตัว (Scalable) และสามารถควบคุมต้นทุนการประมวลผลบนคลาวด์ได้อย่างเหมาะสม โดยใช้สถาปัตยกรรมแบบ Decoupled Storage & Compute เพื่อแยกส่วนการจัดเก็บข้อมูลและการประมวลผลออกจากกัน พร้อมพัฒนา ELT Pipeline ที่ทำงานโดยอัตโนมัติผ่าน Apache Airflow และ GitHub Actions เพื่อจัดเตรียมข้อมูลให้อยู่ในรูปแบบพร้อมใช้งานสำหรับการวิเคราะห์ (Analytics-Ready Data) และนำไปแสดงผลผ่าน Web Dashboard เพื่อสนับสนุนการวิเคราะห์ผลตอบแทนทางการเงิน แนวโน้มความนิยมของภาพยนตร์ และการค้นหาประเด็นเนื้อหาที่โดดเด่นซึ่งสามารถนำไปต่อยอดเป็นแนวคิดในการพัฒนาภาพยนตร์เรื่องใหม่ได้
 
 ---
 
@@ -52,54 +52,65 @@
 <img width="1920" height="1080" alt="DAG (4)" src="https://github.com/user-attachments/assets/9ed79be0-e597-45f7-9e03-d0d4c8a5b6e1" />
 
 
- Data Pipeline นี้บริหารจัดการและควบคุมลำดับการทำงานทั้งหมดด้วย **Apache Airflow [B]** ซึ่งถูก Deploy และทำงานอยู่บน **AWS EC2 [A] ในรูปแบบ Docker Container โดยทำหน้าที่เป็น Workflow Orchestrator หลักในการตั้งเวลาการทำงาน จัดการ Dependencies เชื่อมโยงระบบ Serverless Ingestion และสั่งรัน dbt Core เพื่อประมวลผลข้อมูลลงสู่ Data Lakehouse
+Data Pipeline นี้บริหารจัดการและควบคุมลำดับการทำงานทั้งหมดด้วย **Apache Airflow [B]** ซึ่งถูก Deploy และทำงานอยู่บน **AWS EC2 [A]** ในรูปแบบ Docker Container โดยทำหน้าที่เป็น Workflow Orchestrator หลักในการตั้งเวลาการทำงาน จัดการ Dependencies เชื่อมโยงระบบ Serverless Ingestion และสั่งรัน dbt Core เพื่อประมวลผลข้อมูลลงสู่ Data Lakehouse[cite: 6]
 
-### Task 1: invoke_producer_lambda
+---
+
+### การบริหารจัดการต้นทุน (Cost Optimization)
+* **Scheduled Compute Management (AWS EventBridge [L]):** ตั้งตารางเวลาสั่งเปิดและปิดเครื่อง **AWS EC2 [A]** (Start / Stop Schedule) อัตโนมัติตามรอบการทำงานของ Pipeline เพื่อหลีกเลี่ยงการเปิดเซิร์ฟเวอร์ทิ้งไว้โดยไม่มีการใช้งาน
+* **Serverless Execution (AWS Lambda [C, E, F]):** เลือกใช้สถาปัตยกรรมแบบ Serverless ในส่วนการดึงข้อมูล ทำให้ไม่ต้องเสียค่าเช่าเซิร์ฟเวอร์ค้างไว้ตลอดเวลา โดยระบบคิดค่าบริการตามหน่วยประมวลผล (vCPU/Memory) และระยะเวลาที่รันจริงเท่านั้น ซึ่งจากการรันงานจริงรายวันต่อเนื่องเกือบ 1 เดือน ค่าใช้จ่ายในส่วนของ Lambda ยังอยู่ที่ **$0** (อยู่ในโควตา Free Tier ของ AWS)
+* **Conditional Monthly Processing (Task 5 & Task 6):** ใช้ Branching Logic ตรวจสอบวันแรกของเดือน เพื่อข้ามการรันโมเดลระดับเดือนในวันปกติ ช่วยลดปริมาณการสแกนข้อมูลและค่าใช้จ่ายในการ Query ของ **AWS Athena [I]**[cite: 6]
+
+---
+
+### ระบบ CI/CD Deployment
+* **Continuous Deployment to EC2 (GitHub Actions [M] $\rightarrow$ AWS EC2 [A]):** เมื่อมีการ Push โค้ดใหม่ขึ้น Repository ระบบ **GitHub Actions [M]** จะทำการเชื่อมต่อและสั่งให้ **AWS EC2 [A]** ดึงโค้ดล่าสุด (DAGs, dbt models) จาก GitHub มาอัปเดตบนเครื่องโดยอัตโนมัติ
+* **Serverless Container Pipeline (GitHub Actions [M] $\rightarrow$ Docker [N] $\rightarrow$ Amazon ECR [O]):** ระบบ **GitHub Actions [M]** สั่ง **Docker [N]** ทำการ Build โค้ดและ Dependencies ของฟังก์ชัน Ingestion ออกมาเป็น Container Image แล้ว Push ขึ้นไปจัดเก็บบน **Amazon ECR [O]** เพื่อให้กลุ่มฟังก์ชัน **AWS Lambda [C, E, F]** ดึง Image เวอร์ชันล่าสุดไปใช้งาน
+
+---
+
+### ลำดับการทำงานของ Data Pipeline (DAG Workflow)
+
+#### Task 1: invoke_producer_lambda
 * **Apache Airflow [B]** บน **AWS EC2 [A]** สั่งทริกเกอร์ **AWS Lambda (Producer) [C]** เพื่อเริ่มต้น Pipeline การนำเข้าข้อมูล
 * **AWS Lambda (Producer) [C]** ดึงรายการ Movie IDs ที่มีการอัปเดตรายวัน (Daily Changed Movie IDs) จาก TMDB API
-* แบ่งชุด IDs เป็น Batches แล้วส่งเข้าคิว **AWS Simple Queue Service (SQS) [D]** เพื่อทำหน้าที่เป็นบัฟเฟอร์และควบคุม Concurrency ไม่ให้เกิน Rate Limit ของ API 
-* **AWS Lambda (Workers) [E]** ถูกเรียกใช้งานจาก **SQS [D]** เพื่อดึงข้อมูล รายละเอียดเชิงลึกของภาพยนตร์ (Movie Details เช่น genres, runtime, release date) แบบคู่ขนาน เพื่อไม่ให้ worker ตัวเดียวทำงานหนักเกินไป
-* **AWS Lambda (Workers) [E]** บันทึกข้อมูลดิบรูปแบบ Raw JSON ลงใน **Amazon S3 (Raw Zone) [G]**
+* แบ่งชุด IDs เป็น Batches แล้วส่งเข้าคิว **AWS Simple Queue Service (SQS) [D]** เพื่อทำหน้าที่เป็นบัฟเฟอร์และควบคุม Concurrency ไม่ให้เกิน Rate Limit ของ API
+* **AWS Lambda (Workers) [E]** ถูกเรียกใช้งานจาก **SQS [D]** เพื่อดึงข้อมูลรายละเอียดเชิงลึกของภาพยนตร์ (Movie Details เช่น genres, runtime, release date) แบบคู่ขนาน (Scalable Processing) เพื่อไม่ให้ Worker ตัวเดียวทำงานหนักเกินไป
+* **AWS Lambda (Workers) [E]** บันทึกข้อมูลดิบรูปแบบ Raw JSON ลงใน **Amazon S3 (Raw Zone) [G]**[cite: 6]
 
-### Task 2: wait_for_workers_completion
+#### Task 2: wait_for_workers_completion
 * หยุดรอเวลาเป็นเวลา 7 นาที เพื่อเปิดช่วงเวลาให้ **AWS Lambda (Workers) [E]** ทยอยดึงงานจากคิวและประมวลผลข้อมูลจนเสร็จสมบูรณ์
 * โดยปกติ Workers จะใช้เวลาทำงานไม่เกิน 5 นาที แต่ตั้งหน่วงเวลาเผื่อไว้อีก 2 นาทีเพื่อรองรับวันที่มีจำนวนภาพยนตร์ที่มีการอัปเดตหรือเปลี่ยนแปลงมากกว่าปกติ
 * ช่วยให้มั่นใจว่ากระบวนการดึง Movie Details จาก API และการเขียนไฟล์ Raw JSON ทั้งหมดลง **Amazon S3 (Raw Zone) [G]** เสร็จสิ้นเรียบร้อย
-* ทำหน้าที่เป็นจุดรอข้อมูลให้พร้อมก่อนไปต่อ โดยรวมสายการทำงานเข้ากับ Task 3 เพื่อการันตีว่าข้อมูลดิบทั้ง Movie Details และ Daily Snapshots ถูกบันทึกครบถ้วน ก่อนเริ่มรัน dbt ในขั้นตอนถัดไป
+* ทำหน้าที่เป็นจุดรอข้อมูลให้พร้อมก่อนไปต่อ โดยรวมสายการทำงานเข้ากับ **Task 3** เพื่อการันตีว่าข้อมูลดิบทั้ง Movie Details และ Daily Snapshots ถูกบันทึกครบถ้วน ก่อนเริ่มรัน dbt ในขั้นตอนถัดไป[cite: 6]
 
-### Task 3: invoke_snapshot_lambda
-* ทำงานแบบคู่ขนาน (Parallel) พร้อมกับ Task 1
+#### Task 3: invoke_snapshot_lambda
+* ทำงานแบบคู่ขนาน (Parallel) พร้อมกับ **Task 1**
 * **Apache Airflow [B]** สั่งทริกเกอร์ **AWS Lambda [F]**
 * **AWS Lambda [F]** ดึงข้อมูลสถิติความนิยมและการมีส่วนร่วมจากผู้ชมของภาพยนตร์ที่เข้าฉายในช่วง 30 วันที่ผ่านมาแบบรายวัน (Daily Engagement Metrics เช่น popularity, vote count, vote average) จาก TMDB API
-* บันทึกข้อมูล Raw JSON รูปแบบ NDJSON ลงใน **Amazon S3 (Raw Zone) [G]** โดยตรง
+* บันทึกข้อมูล Raw JSON รูปแบบ NDJSON ลงใน **Amazon S3 (Raw Zone) [G]** โดยตรง[cite: 6]
 
-### Task 4: trigger_dbt_daily_models
-* **Apache Airflow [B]** สั่งรัน CLI ของ **dbt Core** [K] บนคอนเทนเนอร์
-* **dbt Core [K]** Compile โค้ด SQL และส่งคำสั่งผ่าน adapter dbt-athena-community ไปประมวลผลบน **AWS Athena [I]**
-* **AWS Athena [I]** อ้างอิง Metadata โครงสร้างตารางและ Partition จาก **AWS Glue Data Catalog** [H] เพื่อ Query อ่านไฟล์ Raw JSON จาก **Amazon S3 (Raw Zone) [G]**
-* ประมวลผลสร้างข้อมูลรายวัน ได้แก่ ตารางมิติ (Dimensions), ตารางเชื่อมโยง (Bridges เช่น ประเภทหนัง, นักแสดง) และตารางสถิติความนิยมและการมีส่วนร่วมจากผู้ชมของภาพยนตร์ที่เข้าฉายในช่วง 30 วันที่ผ่านมาแบบรายวัน (fact_movie_daily_engagement_30d)
-* บันทึกผลลัพธ์เป็นไฟล์ Parquet ลงใน **Amazon S3 (Gold Zone / Lakehouse) [J]**
+#### Task 4: trigger_dbt_daily_models
+* **Apache Airflow [B]** สั่งรัน CLI ของ **dbt Core [K]** บนคอนเทนเนอร์
+* **dbt Core [K]** Compile โค้ด SQL และส่งคำสั่งผ่าน adapter `dbt-athena-community` ไปประมวลผลบน **AWS Athena [I]**
+* **AWS Athena [I]** อ้างอิง Metadata โครงสร้างตารางและ Partition จาก **AWS Glue Data Catalog [H]** เพื่อ Query อ่านไฟล์ Raw JSON จาก **Amazon S3 (Raw Zone) [G]**
+* ประมวลผลสร้างข้อมูลรายวัน ได้แก่ ตารางมิติ (Dimensions), ตารางเชื่อมโยง (Bridges เช่น ประเภทหนัง, นักแสดง) และตารางสถิติความนิยมและการมีส่วนร่วมจากผู้ชมของภาพยนตร์ที่เข้าฉายในช่วง 30 วันที่ผ่านมาแบบรายวัน (`fact_movie_daily_engagement_30d`)
+* บันทึกผลลัพธ์เป็นไฟล์ Parquet ลงใน **Amazon S3 (Gold Zone / Lakehouse) [J]**[cite: 6]
 
-### Task 5: evaluate_calendar_boundary
-* ทำหน้าที่เป็น Branching Operator ตรวจสอบเงื่อนไขว่า Execution Date ของรอบนี้ตรงกับ วันแรกของเดือน (1st of month) หรือไม่
-* กรณีไม่ใช่ (No): ส่งต่อไปยัง Task 6: skip_monthly_transformation เพื่อจบการทำงานของ Pipeline ประจำวันทันที
-* กรณีใช่ (Yes): ส่งต่อไปยัง Task 7: trigger_dbt_monthly_models เพื่อประมวลผลรอบพิเศษประจำเดือน
+#### Task 5: evaluate_calendar_boundary
+* ทำหน้าที่เป็น Branching Operator ตรวจสอบเงื่อนไขว่า Execution Date ของรอบนี้ตรงกับ **วันแรกของเดือน (1st of month)** หรือไม่
+* **กรณีไม่ใช่ (No):** ส่งต่อไปยัง **Task 6: skip_monthly_transformation** เพื่อจบการทำงานของ Pipeline ประจำวันทันที
+* **กรณีใช่ (Yes):** ส่งต่อไปยัง **Task 7: trigger_dbt_monthly_models** เพื่อประมวลผลรอบพิเศษประจำเดือน[cite: 6]
 
-### Task 6: skip_monthly_transformation
-* ทำหน้าที่เป็น Dummy Task (ผ่าน EmptyOperator) สำหรับรองรับเส้นทางการทำงานกรณีที่ไม่ใช่วันแรกของเดือน
-* จบการทำงานของ Pipeline ประจำวันทันที โดยไม่สั่งรันโมเดลระดับเดือน เพื่อหลีกเลี่ยงการใช้ทรัพยากรและลดค่าใช้จ่ายในการคิวรีของ Athena โดยไม่จำเป็น
+#### Task 6: skip_monthly_transformation
+* ทำหน้าที่เป็น Dummy Task (ผ่าน `EmptyOperator`) สำหรับรองรับเส้นทางการทำงานกรณีที่ไม่ใช่วันแรกของเดือน
+* จบการทำงานของ Pipeline ประจำวันทันที โดยไม่สั่งรันโมเดลระดับเดือน เพื่อหลีกเลี่ยงการใช้ทรัพยากรและลดค่าใช้จ่ายในการคิวรีของ **AWS Athena [I]** โดยไม่จำเป็น[cite: 6]
 
-### Task 7: trigger_dbt_monthly_models
+#### Task 7: trigger_dbt_monthly_models
 * **Apache Airflow [B]** สั่งรันคำสั่ง **dbt Core [K]** สำหรับโมเดลรายเดือน
-* dbt Core [K] ส่งคำสั่ง SQL ไปสั่ง AWS Athena [I] ให้ประมวลผลโมเดล fact_movie_keyword_tfidf ใหม่ทั้งหมดทั้งคลังข้อมูล (Full Refresh ในรูปแบบ materialized='table')
-* AWS Athena [I] คำนวณสรุปข้อมูลภาพยนตร์รายเดือน เช่น การรวมยอดสถิติรายเดือน (Monthly Aggregated Metrics), แนวโน้มความนิยมสะสม (Monthly Popularity Trends) และตัวชี้วัดประสิทธิภาพรายเดือน (Monthly Performance Indicators)
-* เขียนไฟล์ผลลัพธ์ Parquet จัดเก็บลงใน Amazon S3 (Gold Zone / Lakehouse) [J]
-
-> [!NOTE]
-> **ทำไมโมเดล `fact_movie_keyword_tfidf` ต้องคำนวณใหม่ทั้งระบบเดือน เดือนละครั้ง?**
-> * **หลักการของสถิติ TF-IDF:** การคำนวณค่าน้ำหนักคำต้องอาศัยค่าความหายากของคำ (Inverse Document Frequency: IDF) ซึ่งอิงจาก **"จำนวนภาพยนตร์ทั้งหมดในคลังข้อมูล"** ($N$)
-> * **ความแม่นยำของข้อมูล:** เมื่อมีภาพยนตร์ใหม่ถูกบันทึกเข้ามาตลอดทั้งเดือน สัดส่วนความหายากของแต่ละคีย์เวิร์ดจะเปลี่ยนไป จึงจำเป็นต้องคำนวณใหม่ทั้งหมด (Full Refresh) เพื่อให้ค่าน้ำหนักสะท้อนความหมายทางสถิติได้ถูกต้องที่สุด
-> * **Cost & Performance Optimization:** การคำนวณใหม่ทุกวันจะสิ้นเปลืองค่าคิวรีบน AWS Athena โดยไม่จำเป็น เนื่องจากการเปลี่ยนแปลงระดับวันไม่ได้ส่งผลต่อค่าน้ำหนักรวมอย่างมีนัยสำคัญ การรันเพียงเดือนละ 1 ครั้ง จึงเป็นจุดสมดุลที่ดีที่สุดระหว่างความสดใหม่ของข้อมูลและค่าใช้จ่าย cloud
+* **dbt Core [K]** ส่งคำสั่ง SQL ไปสั่ง **AWS Athena [I]** ให้ประมวลผลโมเดล `fact_movie_keyword_tfidf` ใหม่ทั้งหมดทั้งคลังข้อมูล (Full Refresh ในรูปแบบ `materialized='table'`)
+* **AWS Athena [I]** คำนวณสรุปข้อมูลภาพยนตร์รายเดือน เช่น การรวมยอดสถิติรายเดือน (Monthly Aggregated Metrics), แนวโน้มความนิยมสะสม (Monthly Popularity Trends) และตัวชี้วัดประสิทธิภาพรายเดือน (Monthly Performance Indicators)
+* เขียนไฟล์ผลลัพธ์ Parquet จัดเก็บลงใน **Amazon S3 (Gold Zone / Lakehouse) [J]**[cite: 6]
 ---
 
 ## 3. ปัญหาทางเทคนิคและการตัดสินใจเชิงวิศวกรรม (Technical Challenges & Trade-offs)
