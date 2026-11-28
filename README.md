@@ -49,7 +49,8 @@
 
 ## 2. แผนภาพสถาปัตยกรรมระบบ (Architecture Flow)
 
-<img width="1920" height="1080" alt="CICD Deployment (3)" src="https://github.com/user-attachments/assets/ec127f3e-ca63-4dc0-b8e3-f4d48a71fc60" />
+<img width="1317" height="992" alt="CICD Deployment (4)" src="https://github.com/user-attachments/assets/3ba7f96c-8419-47d3-ae01-591b51d5aa83" />
+
 
 
 
